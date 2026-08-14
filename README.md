@@ -19,6 +19,10 @@
 |---|---|
 | ![Updates](./docs/images/updates.png) | ![Settings](./docs/images/settings.png) |
 
+| Plugin Store |
+|---|
+| ![Plugin Store](./docs/images/store.png) |
+
 ## Why this launcher
 
 Setting up dsh normally means installing Node.js, running npm commands, dealing with registries; updating means digging out commands; plugins mean manual `git pull`. **Too much hassle.**
@@ -41,10 +45,12 @@ double-click → splash → click "Install" → grab a coffee → click "Start" 
 - ▶️ **One-click Start** — the big button morphs by state: *Install* / *Start* / *Open Browser* + stop / restart; browser auto-opens at `http://127.0.0.1:8099`
 - 🔄 **3-way Update Strategy** — launcher (GitHub `version.txt`), dsh (npm), plugins (git) all show **current / latest**; fetched automatically on launch and every 3 hours — no manual clicking
 - 🧩 **Plugin Manager** — remote URL / branch / update badges per plugin; install via **git URL** or **npm package name**; per-plugin update, remove, one-click maintain (update all + fix deps)
+- 🛍️ **Plugin Store** — standalone store window listing GitHub `topic:dsh-plugin` plugins: stars / language / last-update per card, multi-keyword fuzzy search, sort by stars or name, language filter, one-click install and a browse button that opens the repo page; list is pre-fetched at launch, cached locally and auto-refreshed in the background — opens instantly, no manual "fetch" click needed
+- 🌉 **Auto proxy** — detects Clash / v2rayN and friends automatically (config → environment → Windows system proxy → common-port scan) and routes npm / git / updates through it; China-friendly mirror fallbacks for npm & Node.js
 - 🌐 **Bilingual UI** — follows the system language by default, manual zh/en switch with flags; vector icons across nav & settings
-- 🛡️ **Robust** — crash.log on unhandled exceptions, actionable error hints, dark themed dialogs
+- 🛡️ **Robust** — crash.log on unhandled exceptions, actionable error hints, dark themed dialogs, atomic smooth page rendering (no banding)
 - 🖥️ **System tray** — close-to-tray, single instance
-- 📐 **Hi-DPI responsive** — runtime DPI scaling; window size/position computed from the actual screen
+- 📐 **Hi-DPI responsive** — runtime DPI scaling; window size/position computed from the actual screen; borderless resize & maximize
 
 ## Quick start
 
