@@ -14,7 +14,7 @@ if exist deepseek.ico set ICO=/win32icon:deepseek.ico
 set MANIFEST=
 if exist app.manifest set MANIFEST=/win32manifest:app.manifest
 
-"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ %RES% %ICO% %MANIFEST% /out:DeepSeekHarness.exe Launcher.cs
+"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /r:System.Web.Extensions.dll %RES% %ICO% %MANIFEST% /out:DeepSeekHarness.exe Launcher.cs
 if %errorlevel%==0 (
     echo [OK] DeepSeekHarness.exe built
 ) else (
