@@ -1362,6 +1362,8 @@ namespace DeepSeekHarness
         TextBox upPluginDetail;
         Label upLauncherLatest, upLauncherNote;
         ModernButton upLauncherCheck, upLauncherGo;
+        Dictionary<string, string> pluginLocalHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> pluginRemoteHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // 日志页
         ComboBox logKind;
@@ -1406,7 +1408,7 @@ namespace DeepSeekHarness
             DshTheme.S = S;
 
             // 初始窗口尺寸按屏幕工作区自动计算: 常规 800x600, 小屏自动收缩(不低于 800x560)
-            int wantW = 800, wantH = 600;
+            int wantW = 920, wantH = 640;
             try
             {
                 Rectangle wa = Screen.PrimaryScreen.WorkingArea;   // 物理像素
@@ -2630,6 +2632,8 @@ namespace DeepSeekHarness
             };
             string detail = p.IsGit
                 ? (string.IsNullOrEmpty(p.RemoteUrl) ? p.Path : p.RemoteUrl) + (string.IsNullOrEmpty(p.Branch) ? "" : "   [" + p.Branch + "]")
+                  + (pluginLocalHashes.ContainsKey(p.Name) ? "   本地 " + pluginLocalHashes[p.Name] : "")
+                  + (pluginRemoteHashes.ContainsKey(p.Name) ? "  →  最新 " + pluginRemoteHashes[p.Name] : "")
                 : p.Path;
             var detailLbl = new Label
             {
@@ -2820,7 +2824,21 @@ namespace DeepSeekHarness
 
             upPluginDetail.Text = string.IsNullOrEmpty(currentUpdate.PluginNames)
                 ? "暂无需要更新的插件。\n\n提示：在「插件」页可对单个插件执行 git pull。"
-                : "以下插件有可用更新（git HEAD 落后于远端）：\n\n" + currentUpdate.PluginNames.Replace(", ", "\n");
+                : "以下插件有可用更新（本地 HEAD → 最新）：\n\n" + BuildPluginUpdateDetail();
+        }
+
+        string BuildPluginUpdateDetail()
+        {
+            var lines = new List<string>();
+            foreach (string raw in currentUpdate.PluginNames.Split(','))
+            {
+                string n = raw.Trim();
+                if (n.Length == 0) continue;
+                string l = pluginLocalHashes.ContainsKey(n) ? pluginLocalHashes[n] : "?";
+                string r = pluginRemoteHashes.ContainsKey(n) ? pluginRemoteHashes[n] : "?";
+                lines.Add("  · " + n + "  (本地 " + l + " → 最新 " + r + ")");
+            }
+            return string.Join("\n", lines.ToArray());
         }
 
         // ============ 日志 ============
@@ -3608,6 +3626,8 @@ namespace DeepSeekHarness
                     && !info.DshCurrent.Equals(info.DshLatest, StringComparison.OrdinalIgnoreCase);
 
                 var names = new List<string>();
+                pluginLocalHashes.Clear();
+                pluginRemoteHashes.Clear();
                 if (Directory.Exists(cfg.PluginsRoot))
                 {
                     foreach (string dir in Directory.GetDirectories(cfg.PluginsRoot))
@@ -3619,8 +3639,12 @@ namespace DeepSeekHarness
                         {
                             string[] parts = remote.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                             string rh = parts.Length > 0 ? parts[0] : "";
-                            if (rh.Length >= 7 && !rh.Equals(local.Trim(), StringComparison.OrdinalIgnoreCase))
-                                names.Add(Path.GetFileName(dir));
+                            string lh = local.Trim();
+                            string name = Path.GetFileName(dir);
+                            if (lh.Length >= 7) pluginLocalHashes[name] = lh.Substring(0, 7);
+                            if (rh.Length >= 7) pluginRemoteHashes[name] = rh.Substring(0, 7);
+                            if (rh.Length >= 7 && !rh.Equals(lh, StringComparison.OrdinalIgnoreCase))
+                                names.Add(name);
                         }
                     }
                 }
