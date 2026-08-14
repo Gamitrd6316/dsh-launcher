@@ -1378,7 +1378,7 @@ namespace DeepSeekHarness
     // ---------- 主窗口 ----------
     class LauncherForm : Form
     {
-        const string LauncherVersion = "1.4.5";
+        const string LauncherVersion = "1.4.6";
 
         LauncherConfig cfg;
         Process serverProc;
@@ -3171,11 +3171,47 @@ namespace DeepSeekHarness
         }
 
         // ============ 环境检测 ============
+        // 进程 PATH 可能陈旧(启动器从资源管理器继承), 检测时合并注册表中的用户/系统 PATH
+        static List<string> AllPathDirs()
+        {
+            var dirs = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Action<string> add = delegate(string path)
+            {
+                if (string.IsNullOrEmpty(path)) return;
+                foreach (string seg in path.Split(';'))
+                {
+                    string t = seg.Trim().Trim('"');
+                    if (t.Length > 0 && seen.Add(t)) dirs.Add(t);
+                }
+            };
+            add(Environment.GetEnvironmentVariable("Path"));
+            try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Environment")) add(k.GetValue("Path") as string); } catch { }
+            try { using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")) add(k.GetValue("Path") as string); } catch { }
+            return dirs;
+        }
+
+        static string FindTool(params string[] names)
+        {
+            foreach (string d in AllPathDirs())
+                foreach (string n in names)
+                {
+                    try
+                    {
+                        string p = Path.Combine(d, n);
+                        if (File.Exists(p)) return p;
+                    }
+                    catch { }
+                }
+            return "";
+        }
+
         EnvInfo DetectEnvironment()
         {
             var env = new EnvInfo();
             try
             {
+                // dsh: where 优先, 失败则全 PATH(含注册表)扫描 —— 解决"刚装完未重启/新终端"检测不到的问题
                 string where = RunCapture("where", "dsh", 10000);
                 if (where != null)
                 {
@@ -3183,7 +3219,12 @@ namespace DeepSeekHarness
                     if (lines.Length > 0 && File.Exists(lines[0].Trim()))
                         env.DshPath = lines[0].Trim();
                 }
-                string ver = RunCapture("cmd.exe", "/c dsh --version", 15000);
+                if (string.IsNullOrEmpty(env.DshPath))
+                    env.DshPath = FindTool("dsh.cmd", "dsh.exe", "dsh");
+                Program.DLog("detect", "dshPath=" + env.DshPath);
+
+                string dshCmd = string.IsNullOrEmpty(env.DshPath) ? "dsh" : env.DshPath;
+                string ver = RunCapture("cmd.exe", "/c \"" + dshCmd + "\" --version", 15000);
                 if (ver != null)
                 {
                     Match m = Regex.Match(ver, "(\\d+\\.\\d+\\.\\d+[^\\s]*)");
@@ -3191,6 +3232,7 @@ namespace DeepSeekHarness
                 }
 
                 env.NpmPath = FirstLine(RunCapture("where", "npm", 10000));
+                if (string.IsNullOrEmpty(env.NpmPath)) env.NpmPath = FindTool("npm.cmd", "npm.exe");
                 env.NpmVersion = FirstLine(RunCapture("cmd.exe", "/c npm --version", 15000));
                 env.GitPath = FindGit();
                 env.GitVersion = FirstLine(RunCapture("cmd.exe", "/c git --version", 15000));
@@ -3256,7 +3298,7 @@ namespace DeepSeekHarness
                 try { if (File.Exists(c)) return c; }
                 catch { }
             }
-            return "";
+            return FindTool("node.exe");
         }
 
         static string FindGit()
@@ -3284,7 +3326,7 @@ namespace DeepSeekHarness
                 try { if (File.Exists(c)) return c; }
                 catch { }
             }
-            return "";
+            return FindTool("git.exe");
         }
 
         // ============ 一键安装 ============
