@@ -383,8 +383,13 @@ namespace DeepSeekHarness
                 if (!string.IsNullOrEmpty(env)) DshHome = env;
                 else
                 {
-                    string userDsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh");
-                    DshHome = Directory.Exists(userDsh) ? userDsh : Path.Combine(exeDir, "dsh-home");
+                    // 标准约定: 优先用户目录 ~/.dsh (与 dsh 官方默认一致), 失败才退回 exe 目录
+                    try
+                    {
+                        string userDsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh");
+                        DshHome = userDsh;
+                    }
+                    catch { DshHome = Path.Combine(exeDir, "dsh-home"); }
                 }
             }
         }
@@ -1338,7 +1343,7 @@ namespace DeepSeekHarness
     // ---------- 主窗口 ----------
     class LauncherForm : Form
     {
-        const string LauncherVersion = "1.4.3";
+        const string LauncherVersion = "1.4.4";
 
         LauncherConfig cfg;
         Process serverProc;
@@ -2202,8 +2207,9 @@ namespace DeepSeekHarness
             var btnCell = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Color.Transparent, Margin = Padding.Empty, Padding = new Padding(0, Px(4), 0, 0) };
             setDetect = MakeBtn(Lang.T("自动检测"), Px(88), Px(36), false); setDetect.Margin = new Padding(0, 0, Px(10), 0); setDetect.Click += delegate { RunDetect(); };
             setSave = MakeBtn(Lang.T("保存设置"), Px(88), Px(36), true); setSave.Margin = new Padding(0, 0, Px(10), 0); setSave.Click += delegate { SaveSettings(); };
-            setOpenCfg = MakeBtn(Lang.T("打开配置文件"), Px(100), Px(36), false); setOpenCfg.Margin = Padding.Empty; setOpenCfg.Click += delegate { OpenConfigFile(); };
-            btnCell.Controls.AddRange(new Control[] { setDetect, setSave, setOpenCfg });
+            setOpenCfg = MakeBtn(Lang.T("打开配置文件"), Px(100), Px(36), false); setOpenCfg.Margin = new Padding(0, 0, Px(10), 0); setOpenCfg.Click += delegate { OpenConfigFile(); };
+            var setShortcut = MakeBtn(Lang.T("桌面快捷方式"), Px(100), Px(36), false); setShortcut.Margin = Padding.Empty; setShortcut.Click += delegate { CreateDesktopShortcut(); };
+            btnCell.Controls.AddRange(new Control[] { setDetect, setSave, setOpenCfg, setShortcut });
             grid.Controls.Add(btnCell, 1, 8);
 
             card.Controls.Add(grid);
@@ -3256,13 +3262,14 @@ namespace DeepSeekHarness
                         Ui(delegate { SetStatus("未检测到 Node.js，正在获取下载地址…", DshTheme.Warn); });
                         string nodeUrl = GetLatestLtsUrl();
                         if (nodeUrl == null) throw new Exception("无法获取 Node.js 下载地址（请检查网络连接后重试）");
-                        string ver = Regex.Match(nodeUrl, "node-(v[^/]+)-win-x64").Groups[1].Value;
-                        string zip = Path.Combine(Path.GetTempPath(), "node-" + ver + "-win-x64.zip");
+                        string ver = Regex.Match(nodeUrl, "node-(v[^/]+)-win-(x64|x86)").Groups[1].Value;
+                        string arch = Regex.Match(nodeUrl, "node-(v[^/]+)-win-(x64|x86)").Groups[2].Value;
+                        string zip = Path.Combine(Path.GetTempPath(), "node-" + ver + "-win-" + arch + ".zip");
                         Ui(delegate { SetStatus("正在下载 Node.js " + ver + "（约 30MB）…", DshTheme.Info); });
                         if (!DownloadFile(nodeUrl, zip))
                         {
                             // 下载失败回退国内镜像
-                            string mirrorZip = "https://npmmirror.com/mirrors/node/" + ver + "/node-" + ver + "-win-x64.zip";
+                            string mirrorZip = "https://npmmirror.com/mirrors/node/" + ver + "/node-" + ver + "-win-" + arch + ".zip";
                             AppendLog("[install] 官方源下载失败, 回退镜像 " + mirrorZip);
                             if (!DownloadFile(mirrorZip, zip))
                                 throw new Exception("Node.js 下载失败（请检查网络后重试）");
@@ -3336,7 +3343,7 @@ namespace DeepSeekHarness
 
         static string GetLatestLtsUrl()
         {
-            // 官方源优先, 失败回退国内镜像 (npmmirror)
+            // 官方源优先, 失败回退国内镜像; 自动识别 32/64 位; 内置下载器优先(不依赖 curl)
             string[] indexUrls = {
                 "https://nodejs.org/dist/index.json",
                 "https://npmmirror.com/mirrors/node/index.json"
@@ -3345,18 +3352,25 @@ namespace DeepSeekHarness
                 "https://nodejs.org/dist/",
                 "https://npmmirror.com/mirrors/node/"
             };
+            string arch = Environment.Is64BitOperatingSystem ? "x64" : "x86";
             for (int i = 0; i < indexUrls.Length; i++)
             {
+                string json = null;
                 try
                 {
-                    string json = RunCapture("curl.exe", "-s -m 30 " + indexUrls[i], 45000);
-                    if (json == null) continue;
-                    Match m = Regex.Match(json, "\"version\":\"(v\\d+\\.\\d+\\.\\d+)\",\"lts\":\"[A-Za-z]+\"");
-                    if (!m.Success) continue;
-                    string ver = m.Groups[1].Value;
-                    return distBases[i] + ver + "/node-" + ver + "-win-x64.zip";
+                    using (var wc = new WebClient())
+                    {
+                        wc.Headers[HttpRequestHeader.UserAgent] = "dsh-launcher";
+                        json = wc.DownloadString(indexUrls[i]);
+                    }
                 }
                 catch { }
+                if (json == null) json = RunCapture("curl.exe", "-s -m 30 " + indexUrls[i], 45000);
+                if (json == null) continue;
+                Match m = Regex.Match(json, "\"version\":\"(v\\d+\\.\\d+\\.\\d+)\",\"lts\":\"[A-Za-z]+\"");
+                if (!m.Success) continue;
+                string ver = m.Groups[1].Value;
+                return distBases[i] + ver + "/node-" + ver + "-win-" + arch + ".zip";
             }
             return null;
         }
@@ -4054,6 +4068,29 @@ namespace DeepSeekHarness
             catch (Exception ex)
             {
                 ShowError("检测失败", ex.Message);
+            }
+        }
+
+        // 零基础用户: 一键创建桌面快捷方式
+        void CreateDesktopShortcut()
+        {
+            try
+            {
+                string lnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "DeepSeek Harness.lnk");
+                Type t = Type.GetTypeFromProgID("WScript.Shell");
+                object shell = Activator.CreateInstance(t);
+                object shortcut = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { lnk });
+                Type st = shortcut.GetType();
+                st.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { Application.ExecutablePath });
+                st.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { AppDomain.CurrentDomain.BaseDirectory });
+                st.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "DeepSeek Harness 启动器" });
+                try { st.InvokeMember("IconLocation", BindingFlags.SetProperty, null, shortcut, new object[] { Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "deepseek.ico") + ",0" }); } catch { }
+                st.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+                DarkDialog.Show(this, "已在桌面创建「DeepSeek Harness」快捷方式，双击即可启动。", "桌面快捷方式", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                ShowError(Lang.T("操作失败"), ex.Message);
             }
         }
 
