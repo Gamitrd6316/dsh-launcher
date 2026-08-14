@@ -493,6 +493,7 @@ namespace DeepSeekHarness
         public string Name = "";
         public string Path = "";
         public bool IsGit;
+        public bool Disabled;
         public string RemoteUrl = "";
         public string Branch = "";
     }
@@ -624,6 +625,7 @@ namespace DeepSeekHarness
             { "检查更新", "Check Updates" }, { "立即升级", "Upgrade Now" }, { "下载新版本", "Download" },
             { "当前版本", "Current" }, { "最新版本", "Latest" }, { "未检查", "Not checked" },
             { "打开目录", "Open Folder" }, { "目录", "Folder" }, { "卸载", "Remove" },
+            { "启用", "Enable" }, { "禁用", "Disable" }, { "已禁用", "Disabled" }, { "已启用插件", "Enabled plugin" }, { "已禁用插件", "Disabled plugin" }, { "操作失败", "Operation failed" },
             { "刷新", "Refresh" }, { "清空当前日志", "Clear Log" }, { "打开日志目录", "Open Log Folder" }, { "自动刷新", "Auto refresh" },
             { "自动检测", "Auto Detect" }, { "保存设置", "Save" }, { "打开配置文件", "Open Config" },
             { "dsh 命令", "dsh Command" }, { "服务端口", "Port" }, { "插件目录", "Plugins Dir" }, { "日志目录", "Log Dir" }, { "npm 包名", "npm Package" },
@@ -892,6 +894,28 @@ namespace DeepSeekHarness
             TextRenderer.DrawText(g, Text, Font, new Rectangle(0, 0, Width, Height), tc,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+    }
+
+    // ---------- 状态芯片 (圆角药丸标签) ----------
+    class ChipLabel : Label
+    {
+        public ChipLabel()
+        {
+            AutoSize = true;
+            BackColor = DshTheme.BgInput;
+            ForeColor = DshTheme.TextMain;
+            Font = new Font("Microsoft YaHei UI", 8.5f);
+            Padding = new Padding((int)Math.Round(10 * DshTheme.S), (int)Math.Round(4 * DshTheme.S), (int)Math.Round(10 * DshTheme.S), (int)Math.Round(4 * DshTheme.S));
+            Margin = new Padding(0, 0, (int)Math.Round(8 * DshTheme.S), (int)Math.Round(5 * DshTheme.S));
+            TextAlign = ContentAlignment.MiddleCenter;
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (Width > 8 && Height > 8)
+                Region = new Region(Program.RoundRectPath(new Rectangle(0, 0, Width, Height), Height / 2));
         }
     }
 
@@ -1314,7 +1338,7 @@ namespace DeepSeekHarness
     // ---------- 主窗口 ----------
     class LauncherForm : Form
     {
-        const string LauncherVersion = "1.4.1";
+        const string LauncherVersion = "1.4.2";
 
         LauncherConfig cfg;
         Process serverProc;
@@ -1343,7 +1367,7 @@ namespace DeepSeekHarness
         RoundPanel heroCard;
         StatusDot ovDot;
         EllipsisLabel ovStatusTitle, ovStatusSub;
-        Label ovInfo;
+        FlowLayoutPanel ovChips;
         ModernButton ovPrimary, ovSecondary, ovTertiary;
         TextBox ovLog;
 
@@ -1862,19 +1886,17 @@ namespace DeepSeekHarness
             heroTlp.Controls.Add(btnFlow, 0, 1);
             heroCard.Controls.Add(heroTlp);
 
-            // 状态信息条 (单行, 超出省略号)
+            // 状态信息条 (彩色状态芯片, 自动换行)
             var strip = new RoundPanel();
-            ovInfo = new Label
+            ovChips = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                AutoSize = false,
-                ForeColor = DshTheme.TextDim,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = true,
                 BackColor = Color.Transparent,
-                Font = DshFonts.Mono,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(Px(16), 0, Px(16), 0)
+                Padding = new Padding(Px(12), Px(8), Px(12), Px(2))
             };
-            strip.Controls.Add(ovInfo);
+            strip.Controls.Add(ovChips);
 
             // 最近日志卡 (标题行: 标题靠左, 提示靠右, Dock 布局无魔法坐标)
             var log = new RoundPanel { Padding = new Padding(Px(14), Px(6), Px(14), Px(14)) };
@@ -1889,7 +1911,7 @@ namespace DeepSeekHarness
             log.Controls.Add(head);
 
             AddRow(stack, heroCard, SizeType.Absolute, Px(148));
-            AddRow(stack, strip, SizeType.Absolute, Px(56));
+            AddRow(stack, strip, SizeType.Absolute, Px(64));
             AddRow(stack, log, SizeType.Percent, 100);
             page.Controls.Add(stack);
             return page;
@@ -2390,25 +2412,44 @@ namespace DeepSeekHarness
                 string.IsNullOrEmpty(currentEnv.GitPath) ? "✗" : "✓",
                 dshOk ? "✓" : "✗");
             string updLine;
-            if (currentUpdate.HasUpdate) updLine = "有更新：" + currentUpdate.Detail;
-            else if (!string.IsNullOrEmpty(currentUpdate.DshLatest)) updLine = "已是最新";
+            Color updColor = DshTheme.TextDim;
+            if (currentUpdate.HasUpdate) { updLine = "有更新：" + currentUpdate.Detail; updColor = DshTheme.Warn; }
+            else if (!string.IsNullOrEmpty(currentUpdate.DshLatest)) { updLine = "已是最新"; updColor = DshTheme.Success; }
             else updLine = "更新未检查";
 
+            // 状态芯片
+            ovChips.Controls.Clear();
             if (!envDetected)
             {
-                ovInfo.Text = "正在检测运行环境…";
+                AddChip(ovChips, "正在检测运行环境…", DshTheme.TextDim);
             }
             else
             {
-                ovInfo.Text = string.Format("dsh {0}   ·   {1}   ·   {2}   ·   插件 {3} 个   ·   {4}",
-                    string.IsNullOrEmpty(currentEnv.DshVersion) ? "未安装" : "v" + currentEnv.DshVersion,
-                    url, envLine, currentEnv.PluginDirs, updLine);
+                AddChip(ovChips, "dsh " + (string.IsNullOrEmpty(currentEnv.DshVersion) ? "未安装" : "v" + currentEnv.DshVersion), dshOk ? DshTheme.Success : DshTheme.Error);
+                AddChip(ovChips, url, running ? DshTheme.Success : DshTheme.TextDim);
+                AddChip(ovChips, "Node " + (nodeOk ? "✓" : "✗"), nodeOk ? DshTheme.Success : DshTheme.Error);
+                AddChip(ovChips, "npm " + (string.IsNullOrEmpty(currentEnv.NpmPath) ? "✗" : "✓"), string.IsNullOrEmpty(currentEnv.NpmPath) ? DshTheme.Error : DshTheme.Success);
+                AddChip(ovChips, "git " + (string.IsNullOrEmpty(currentEnv.GitPath) ? "✗" : "✓"), string.IsNullOrEmpty(currentEnv.GitPath) ? DshTheme.Error : DshTheme.Success);
+                AddChip(ovChips, "dsh " + (dshOk ? "✓" : "✗"), dshOk ? DshTheme.Success : DshTheme.Error);
+                AddChip(ovChips, "插件 " + currentEnv.PluginDirs + " 个", DshTheme.TextDim);
+                AddChip(ovChips, updLine, updColor);
             }
 
             ovLog.Text = ReadTail(Path.Combine(cfg.LogDir, "launcher.log"), 8);
             ovLog.SelectionStart = ovLog.Text.Length;
             ovLog.ScrollToCaret();
             UpdateSbRight();
+        }
+
+        // 首页状态芯片
+        void AddChip(FlowLayoutPanel host, string text, Color color)
+        {
+            var chip = new ChipLabel
+            {
+                Text = text,
+                ForeColor = color
+            };
+            host.Controls.Add(chip);
         }
 
         void RenderEnvironment()
@@ -2421,6 +2462,12 @@ namespace DeepSeekHarness
             AddEnvRow(envHost, "npm", currentEnv.NpmPath, currentEnv.NpmVersion);
             AddEnvRow(envHost, "git", currentEnv.GitPath, currentEnv.GitVersion);
             AddEnvRow(envHost, "dsh", currentEnv.DshPath, currentEnv.DshVersion);
+
+            // 缺失环境 → 给出直接可点的解决方案
+            if (string.IsNullOrEmpty(currentEnv.NodePath))
+                AddEnvActionRow(envHost, "未检测到 Node.js — 点击「一键安装」自动装好（含国内镜像）", "一键安装", delegate { InstallDshNow(); });
+            if (string.IsNullOrEmpty(currentEnv.GitPath))
+                AddEnvActionRow(envHost, "未检测到 Git — 插件更新/安装需要它，可从镜像站快速下载", "安装 Git", delegate { OpenMirrorGit(); });
 
             AddEnvSection(envHost, "关键目录");
             AddPathRow(envHost, "数据目录 (DSH_HOME)", cfg.DshHome);
@@ -2440,6 +2487,44 @@ namespace DeepSeekHarness
                 BackColor = Color.Transparent
             };
             host.Add(lbl, Px(24));
+        }
+
+        void AddEnvActionRow(StackPanel host, string text, string btnText, Action action)
+        {
+            var row = new Panel { BackColor = DshTheme.BgInput };
+            row.Paint += delegate(object s, PaintEventArgs e)
+            {
+                var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (var p = Program.RoundRectPath(new Rectangle(0, 0, row.Width - 1, row.Height - 1), (int)Math.Round(8 * S)))
+                using (var pen = new Pen(DshTheme.Warn, 1f)) g.DrawPath(pen, p);
+            };
+            var lbl = new Label
+            {
+                Text = text,
+                AutoSize = false,
+                Location = new Point(Px(12), Px(7)),
+                ForeColor = DshTheme.Warn,
+                BackColor = Color.Transparent,
+                Font = DshFonts.Body
+            };
+            lbl.Width = Math.Max(10, row.Width - Px(150));
+            var btn = MakeBtn(btnText, Px(110), Px(26), true);
+            btn.Anchor = AnchorStyles.Right | AnchorStyles.Top;
+            btn.Click += delegate { action(); };
+            row.Controls.Add(lbl);
+            row.Controls.Add(btn);
+            row.Resize += delegate
+            {
+                btn.Location = new Point(row.Width - btn.Width - Px(10), Px(12));
+                lbl.Width = Math.Max(10, row.Width - Px(150));
+            };
+            host.Add(row, Px(52));
+        }
+
+        void OpenMirrorGit()
+        {
+            try { Process.Start("https://npmmirror.com/mirrors/git-for-windows/"); }
+            catch { }
         }
 
         void AddEnvRow(StackPanel host, string name, string path, string version)
@@ -2535,11 +2620,15 @@ namespace DeepSeekHarness
                 {
                     foreach (string d in Directory.GetDirectories(cfg.PluginsRoot))
                     {
+                        string dirName = Path.GetFileName(d);
+                        bool dis = dirName.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase);
+                        string realName = dis ? dirName.Substring(0, dirName.Length - ".disabled".Length) : dirName;
                         var p = new PluginItem
                         {
-                            Name = Path.GetFileName(d),
+                            Name = realName,
                             Path = d,
-                            IsGit = Directory.Exists(Path.Combine(d, ".git"))
+                            IsGit = Directory.Exists(Path.Combine(d, ".git")),
+                            Disabled = dis
                         };
                         if (p.IsGit)
                         {
@@ -2609,10 +2698,10 @@ namespace DeepSeekHarness
             nameLbl.Width = Px(180);
             var statusLbl = new Label
             {
-                Text = p.IsGit ? "● git" : "● " + Lang.T("普通目录"),
+                Text = p.Disabled ? "● " + Lang.T("已禁用") : (p.IsGit ? "● git" : "● " + Lang.T("普通目录")),
                 AutoSize = true,
                 Location = new Point(Px(200), Px(11)),
-                ForeColor = p.IsGit ? DshTheme.Success : DshTheme.TextDim,
+                ForeColor = p.Disabled ? DshTheme.Warn : (p.IsGit ? DshTheme.Success : DshTheme.TextDim),
                 BackColor = Color.Transparent,
                 Font = DshFonts.Body
             };
@@ -2646,22 +2735,27 @@ namespace DeepSeekHarness
             var pullBtn = MakeBtn("↻ " + Lang.T("更新"), Px(76), Px(28), false);
             var openBtn = MakeBtn(Lang.T("目录"), Px(64), Px(28), false);
             var delBtn = MakeDangerBtn(Lang.T("卸载"), Px(64), Px(28));
+            var toggleBtn = MakeBtn(p.Disabled ? Lang.T("启用") : Lang.T("禁用"), Px(64), Px(28), false);
             pullBtn.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             openBtn.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             delBtn.Anchor = AnchorStyles.Right | AnchorStyles.Top;
+            toggleBtn.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             pullBtn.Click += delegate { PullPlugin(p); };
             openBtn.Click += delegate { OpenFolder(p.Path); };
             delBtn.Click += delegate { UninstallPlugin(p); };
+            toggleBtn.Click += delegate { TogglePlugin(p); };
             row.Controls.Add(nameLbl);
             row.Controls.Add(statusLbl);
             row.Controls.Add(updateBadge);
             row.Controls.Add(detailLbl);
+            row.Controls.Add(toggleBtn);
             row.Controls.Add(delBtn);
             row.Controls.Add(openBtn);
             if (p.IsGit) row.Controls.Add(pullBtn);
             row.Resize += delegate
             {
                 int x = row.Width - Px(12);
+                toggleBtn.Location = new Point(x - toggleBtn.Width, Px(18)); x -= toggleBtn.Width + Px(8);
                 delBtn.Location = new Point(x - delBtn.Width, Px(18)); x -= delBtn.Width + Px(8);
                 openBtn.Location = new Point(x - openBtn.Width, Px(18)); x -= openBtn.Width + Px(8);
                 if (p.IsGit) { pullBtn.Location = new Point(x - pullBtn.Width, Px(18)); x -= pullBtn.Width + Px(8); }
@@ -2737,6 +2831,24 @@ namespace DeepSeekHarness
             });
             worker.IsBackground = true;
             worker.Start();
+        }
+
+        // 插件启用/禁用: 目录重命名加 .disabled 后缀, 可逆且不影响数据
+        void TogglePlugin(PluginItem p)
+        {
+            string target = p.Disabled
+                ? p.Path.Substring(0, p.Path.Length - ".disabled".Length)
+                : p.Path + ".disabled";
+            try
+            {
+                Directory.Move(p.Path, target);
+                SetStatus((p.Disabled ? Lang.T("已启用插件") : Lang.T("已禁用插件")) + " " + p.Name, DshTheme.Success);
+                RenderPlugins();
+            }
+            catch (Exception ex)
+            {
+                ShowError(Lang.T("操作失败"), ex.Message);
+            }
         }
 
         void UninstallPlugin(PluginItem p)
@@ -2991,7 +3103,7 @@ namespace DeepSeekHarness
 
                 env.NpmPath = FirstLine(RunCapture("where", "npm", 10000));
                 env.NpmVersion = FirstLine(RunCapture("cmd.exe", "/c npm --version", 15000));
-                env.GitPath = FirstLine(RunCapture("where", "git", 10000));
+                env.GitPath = FindGit();
                 env.GitVersion = FirstLine(RunCapture("cmd.exe", "/c git --version", 15000));
                 env.NodePath = FindNode();
                 env.NodeVersion = FirstLine(RunCapture("cmd.exe", "/c node --version", 15000));
@@ -3021,12 +3133,68 @@ namespace DeepSeekHarness
             if (where != null)
             {
                 string[] lines = where.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                if (lines.Length > 0) return lines[0].Trim();
+                foreach (string l in lines)
+                {
+                    string p = l.Trim();
+                    if (File.Exists(p)) return p;
+                    // where 可能给出无后缀的路径
+                    if (!p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(p + ".exe")) return p + ".exe";
+                }
             }
-            string local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "node", "node.exe");
-            if (File.Exists(local)) return local;
-            string prog = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "node.exe");
-            if (File.Exists(prog)) return prog;
+
+            // 常见安装位置: nvm-windows / 官方安装包 / scoop / chocolatey
+            var cands = new List<string>();
+            string nvmSymlink = Environment.GetEnvironmentVariable("NVM_SYMLINK");
+            if (!string.IsNullOrEmpty(nvmSymlink)) cands.Add(Path.Combine(nvmSymlink, "node.exe"));
+            cands.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "node.exe"));
+            cands.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "nodejs", "node.exe"));
+            cands.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "node", "node.exe"));
+            string nvmHome = Environment.GetEnvironmentVariable("NVM_HOME");
+            if (string.IsNullOrEmpty(nvmHome))
+                nvmHome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "nvm");
+            if (Directory.Exists(nvmHome))
+            {
+                var vers = new List<string>();
+                try { foreach (string d in Directory.GetDirectories(nvmHome)) if (Path.GetFileName(d).StartsWith("v", StringComparison.OrdinalIgnoreCase)) vers.Add(d); } catch { }
+                vers.Sort();
+                vers.Reverse();   // 新版本优先
+                foreach (string v in vers) cands.Add(Path.Combine(v, "node.exe"));
+            }
+            cands.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "nodejs", "current", "node.exe"));
+            cands.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "chocolatey", "bin", "node.exe"));
+            foreach (string c in cands)
+            {
+                try { if (File.Exists(c)) return c; }
+                catch { }
+            }
+            return "";
+        }
+
+        static string FindGit()
+        {
+            string where = RunCapture("where", "git", 10000);
+            if (where != null)
+            {
+                string[] lines = where.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string l in lines)
+                {
+                    string p = l.Trim();
+                    if (File.Exists(p)) return p;
+                }
+            }
+            var cands = new string[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "cmd", "git.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Git", "cmd", "git.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Git", "cmd", "git.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "chocolatey", "bin", "git.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "git", "current", "cmd", "git.exe")
+            };
+            foreach (string c in cands)
+            {
+                try { if (File.Exists(c)) return c; }
+                catch { }
+            }
             return "";
         }
 
