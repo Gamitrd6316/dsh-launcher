@@ -89,7 +89,7 @@ namespace DeepSeekHarness
 
         public static string ReopenFlagPath()
         {
-            return Path.Combine(Path.GetTempPath(), "dsh-launcher-reopen.flag");
+            return Path.Combine(Path.GetTempPath(), "dsh-launcher-reopen-wpf.flag");
         }
     }
 
