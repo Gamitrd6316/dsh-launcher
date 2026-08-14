@@ -1,11 +1,8 @@
-// DeepSeek Harness Launcher (v1.4.0)
-// 轻量傻瓜式启动器: 左侧导航 + 卡片式内容 + 底部状态栏
+// DeepSeek Harness Launcher (v1.4.5)
+// 傻瓜式启动器: 左侧导航 + 卡片式内容 + 底部状态栏
 //   概览(一键启动/停止/重启) / 环境 / 插件 / 更新 / 日志 / 设置
-// v1.4.0: DeepSeek 品牌深色 UI 重设计 —— 深层海军蓝配色、统一字体工厂与间距体系、
-//         修复环境页按钮裁剪 / 概览卡片重叠 / 状态条换行 / 设置页溢出 / 节标题裁切等布局缺陷。
-// 响应式: 启动时自动读取系统 DPI 得到缩放系数 S, 所有尺寸实时乘以 S 等比适配
-//         (100%/125%/150%/200% 均正确), 窗口初始尺寸按屏幕工作区自动计算。
-// 附加能力: 品牌过渡动画、系统托盘、单实例唤醒、无边框拖拽、一键安装/升级/修复
+// 响应式: 运行时读取系统 DPI, 全部尺寸等比适配; 窗口按屏幕工作区自动计算
+// 附加: 品牌过渡动画、托盘、单实例、无边框拖拽缩放、一键安装/升级/修复、中英切换、镜像兜底、GitHub 自更新
 // 配置: <exe目录>/launcher.json (不存在则用默认值)
 // 编译: csc /target:winexe /platform:anycpu /optimize+
 //   /resource:deepseek_logo.png,DeepSeekHarness.logo.png /win32icon:deepseek.ico /win32manifest:app.manifest
@@ -32,6 +29,20 @@ namespace DeepSeekHarness
     {
         static Mutex singletonMutex;
 
+        // ---- 调试日志接口: 设置环境变量 DSH_LAUNCHER_DEBUG=1 后, 关键流程/命令调用全部写入
+        //      <exe目录>/launcher-debug.log (带时间戳与耗时), 供排障与自动化测试使用
+        public static bool DebugMode = false;
+
+        public static void DLog(string tag, string msg)
+        {
+            try
+            {
+                File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "launcher-debug.log"),
+                    DateTime.Now.ToString("HH:mm:ss.fff") + " [" + tag + "] " + msg + "\r\n");
+            }
+            catch { }
+        }
+
         [DllImport("shell32.dll")]
         static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
 
@@ -52,6 +63,9 @@ namespace DeepSeekHarness
             Application.SetCompatibleTextRenderingDefault(false);
             // 固定任务栏分组 ID, 保证任务栏/固定图标显示 exe 图标(DeepSeek 鲸鱼)
             try { SetCurrentProcessExplicitAppUserModelID("DeepSeekHarness.Launcher.1"); } catch { }
+            try { DebugMode = Environment.GetEnvironmentVariable("DSH_LAUNCHER_DEBUG") == "1"; } catch { }
+            if (DebugMode)
+                DLog("boot", "debug mode on; cwd=" + Environment.CurrentDirectory + "; PATH=" + Environment.GetEnvironmentVariable("PATH"));
 
             // 单实例: 已在运行则发信号让旧窗口弹出, 自己退出
             bool createdNew;
@@ -77,6 +91,7 @@ namespace DeepSeekHarness
 
         public static string RunCaptureStatic(string program, string args, int timeoutMs)
         {
+            // 并发排空 stdout/stderr, 避免管道缓冲写满导致子进程挂死
             try
             {
                 var psi = new ProcessStartInfo(program, args)
@@ -89,10 +104,15 @@ namespace DeepSeekHarness
                 };
                 using (var p = Process.Start(psi))
                 {
-                    string outp = p.StandardOutput.ReadToEnd();
-                    string err = p.StandardError.ReadToEnd();
+                    var sb = new StringBuilder();
+                    p.OutputDataReceived += delegate(object o, DataReceivedEventArgs e) { if (e.Data != null) sb.AppendLine(e.Data); };
+                    p.ErrorDataReceived += delegate(object o, DataReceivedEventArgs e) { if (e.Data != null) sb.AppendLine(e.Data); };
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
                     if (!p.WaitForExit(timeoutMs)) { try { p.Kill(); } catch { } return null; }
-                    return outp;
+                    p.WaitForExit();
+                    if (p.ExitCode != 0) return null;   // 命令失败(如 where 找不到)视为失败, 防止把错误提示当结果
+                    return sb.ToString();
                 }
             }
             catch { return null; }
@@ -422,7 +442,7 @@ namespace DeepSeekHarness
             return cfg;
         }
 
-        public void Save()
+        public bool Save()
         {
             try
             {
@@ -433,8 +453,9 @@ namespace DeepSeekHarness
                     RestartIfRunning ? "true" : "false", OpenBrowserOnStart ? "true" : "false",
                     JsonEsc(NpmPackage), JsonEsc(Language), JsonEsc(LauncherUpdateUrl), JsonEsc(NpmRegistry));
                 File.WriteAllText(ConfigPath, json);
+                return true;
             }
-            catch { }
+            catch { return false; }
         }
 
         static string Get(string json, string key)
@@ -788,7 +809,11 @@ namespace DeepSeekHarness
         {
             base.OnResize(e);
             if (Width > 4 && Height > 4)
+            {
+                var oldRegion = Region;
                 Region = new Region(Program.RoundRectPath(new Rectangle(0, 0, Width, Height), Radius));
+                if (oldRegion != null) oldRegion.Dispose();   // 防止 resize 泄漏 GDI 句柄
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -833,8 +858,14 @@ namespace DeepSeekHarness
         {
             base.OnResize(e);
             if (Width > 4 && Height > 4)
+            {
+                var oldRegion = Region;
                 Region = new Region(Program.RoundRectPath(new Rectangle(0, 0, Width, Height), Radius));
+                if (oldRegion != null) oldRegion.Dispose();
+            }
         }
+
+        // 主按钮悬停提亮: 由 FlatAppearance.MouseOverBackColor 处理, 此 OnPaint 仅为圆角
 
         // 先用"父背景切片"擦除客户区, 再绘制按钮 —— 不走框架透明合成, 杜绝文字残影
         // 注: 实测本配置下 Button 的 OnPaintBackground 不会被框架调用, 真正的擦除在 OnPaint 开头;
@@ -920,7 +951,11 @@ namespace DeepSeekHarness
         {
             base.OnResize(e);
             if (Width > 8 && Height > 8)
+            {
+                var old = Region;
                 Region = new Region(Program.RoundRectPath(new Rectangle(0, 0, Width, Height), Height / 2));
+                if (old != null) old.Dispose();
+            }
         }
     }
 
@@ -1343,7 +1378,7 @@ namespace DeepSeekHarness
     // ---------- 主窗口 ----------
     class LauncherForm : Form
     {
-        const string LauncherVersion = "1.4.4";
+        const string LauncherVersion = "1.4.5";
 
         LauncherConfig cfg;
         Process serverProc;
@@ -2045,7 +2080,8 @@ namespace DeepSeekHarness
             upLauncherCheck.Click += delegate { CheckLauncherUpdateNow(); };
             upLauncherGo.Click += delegate
             {
-                try { if (!string.IsNullOrEmpty(cfg.LauncherUpdateUrl)) Process.Start(cfg.LauncherUpdateUrl); }
+                // 下载新版本: 打开 GitHub Releases 页面(真实可下载 exe)
+                try { Process.Start("https://github.com/loudMore/dsh-launcher/releases/latest"); }
                 catch { }
             };
             var lBtnFlow = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.Transparent, Padding = Padding.Empty };
@@ -2471,7 +2507,6 @@ namespace DeepSeekHarness
                 AddChip(ovChips, "Node " + (nodeOk ? "✓" : "✗"), nodeOk ? DshTheme.Success : DshTheme.Error);
                 AddChip(ovChips, "npm " + (string.IsNullOrEmpty(currentEnv.NpmPath) ? "✗" : "✓"), string.IsNullOrEmpty(currentEnv.NpmPath) ? DshTheme.Error : DshTheme.Success);
                 AddChip(ovChips, "git " + (string.IsNullOrEmpty(currentEnv.GitPath) ? "✗" : "✓"), string.IsNullOrEmpty(currentEnv.GitPath) ? DshTheme.Error : DshTheme.Success);
-                AddChip(ovChips, "dsh " + (dshOk ? "✓" : "✗"), dshOk ? DshTheme.Success : DshTheme.Error);
                 AddChip(ovChips, "插件 " + currentEnv.PluginDirs + " 个", DshTheme.TextDim);
                 AddChip(ovChips, updLine, updColor);
             }
@@ -2673,8 +2708,8 @@ namespace DeepSeekHarness
                         };
                         if (p.IsGit)
                         {
-                            p.RemoteUrl = FirstLine(RunCapture("git", string.Format("-C \"{0}\" config --get remote.origin.url", d), 10000));
-                            p.Branch = FirstLine(RunCapture("git", string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", d), 10000));
+                            p.RemoteUrl = FirstLine(RunGit( string.Format("-C \"{0}\" config --get remote.origin.url", d), 10000));
+                            p.Branch = FirstLine(RunGit( string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", d), 10000));
                         }
                         list.Add(p);
                     }
@@ -2811,6 +2846,14 @@ namespace DeepSeekHarness
             string input = DarkDialog.Input(this, Lang.T("安装插件"),
                 Lang.T("支持两种方式安装:") + "\n\n  1. git 仓库地址 (克隆到插件目录)\n  2. npm 包名 (全局安装)\n\n" + Lang.T("示例") + ": https://github.com/user/plugin.git", "");
             if (string.IsNullOrEmpty(input)) return;
+            // 注入防护: 拒绝含引号/管道/重定向等 shell 元字符的输入
+            if (input.IndexOf('"') >= 0 || input.IndexOf('&') >= 0 || input.IndexOf('|') >= 0
+                || input.IndexOf(';') >= 0 || input.IndexOf('>') >= 0 || input.IndexOf('<') >= 0
+                || input.IndexOf('`') >= 0 || input.IndexOf('$') >= 0 || input.IndexOf('%') >= 0)
+            {
+                DarkDialog.Show(this, Lang.T("地址格式不正确，请输入完整的 git 仓库地址。"), Lang.T("安装插件"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
             bool isUrl = input.IndexOf("://") >= 0 || input.StartsWith("git@") || input.StartsWith("http");
             if (!isUrl && (input.IndexOf(' ') >= 0 || (input.IndexOf('.') < 0 && input.IndexOf('/') < 0 && input.IndexOf('@') < 0)))
             {
@@ -2855,7 +2898,7 @@ namespace DeepSeekHarness
             SetBusy(true);
             var worker = new Thread(delegate ()
             {
-                string r = RunCapture("git", "clone \"" + url + "\" \"" + target + "\"", 300000);
+                string r = RunGit( "clone \"" + url + "\" \"" + target + "\"", 300000);
                 AppendLog("[plugin] clone " + url + (r == null ? " (超时/失败)" : " 完成"));
                 Ui(delegate
                 {
@@ -2926,7 +2969,7 @@ namespace DeepSeekHarness
                 foreach (var p in plugins)
                 {
                     if (!p.IsGit) continue;
-                    string res = RunCapture("git", string.Format("-C \"{0}\" pull", p.Path), 120000);
+                    string res = RunGit( string.Format("-C \"{0}\" pull", p.Path), 120000);
                     AppendLog("[plugin] git pull " + p.Name + (res == null ? " (超时/失败)" : " 完成"));
                     if (res == null) fail++; else ok++;
                 }
@@ -3000,6 +3043,7 @@ namespace DeepSeekHarness
         void RefreshLogViews()
         {
             if (logText == null) return;
+            if (!logAuto.Checked) return;   // 自动刷新复选框真实生效
             string path = CurrentLogPath();
             logText.Text = ReadTail(path, 500);
             logText.SelectionStart = logText.Text.Length;
@@ -3021,12 +3065,14 @@ namespace DeepSeekHarness
         void RunStartupFlow()
         {
             UpdateSbRight();
+            Program.DLog("startup", "begin; S=" + S + " client=" + ClientSize + " cfg=" + LauncherConfig.ConfigPath);
             SetBusy(true);
             SetStatus("正在检测环境…", DshTheme.Info);
 
             var worker = new Thread(delegate ()
             {
                 EnvInfo env = DetectEnvironment();
+                Program.DLog("startup", "detect done; node=" + env.NodePath + " npm=" + env.NpmPath + " git=" + env.GitPath + " dsh=" + env.DshPath + " v" + env.DshVersion);
                 currentEnv = env;
                 Ui(delegate
                 {
@@ -3039,6 +3085,7 @@ namespace DeepSeekHarness
                 {
                     Ui(delegate { SetStatus("正在检查更新…", DshTheme.Info); });
                     UpdateInfo info = CheckUpdates(env);
+                    Program.DLog("startup", "update check done; dshUpd=" + info.DshUpdate + " pluginsUpd=" + info.PluginCount + " detail=" + info.Detail);
                     currentUpdate = info;
                     Ui(delegate
                     {
@@ -3133,7 +3180,8 @@ namespace DeepSeekHarness
                 if (where != null)
                 {
                     string[] lines = where.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (lines.Length > 0) env.DshPath = lines[0].Trim();
+                    if (lines.Length > 0 && File.Exists(lines[0].Trim()))
+                        env.DshPath = lines[0].Trim();
                 }
                 string ver = RunCapture("cmd.exe", "/c dsh --version", 15000);
                 if (ver != null)
@@ -3298,6 +3346,7 @@ namespace DeepSeekHarness
 
                     string npmCmd = Path.Combine(nodeHome, "npm.cmd");
                     if (!File.Exists(npmCmd)) npmCmd = "npm";
+                    Program.DLog("install", "node=" + nodeExe + " npmCmd=" + npmCmd);
                     Ui(delegate { SetStatus("正在安装 dsh（npm install -g " + cfg.NpmPackage + "）…", DshTheme.Info); });
                     string r = NpmInstallGlobal(cfg.NpmPackage, 360000);
                     if (r == null) throw new Exception("npm 安装 dsh 失败（超时）。请检查网络后重试。");
@@ -3447,6 +3496,7 @@ namespace DeepSeekHarness
             starting = true;
             SetBusy(true);
             SetStatus("正在启动服务…", DshTheme.Info);
+            Program.DLog("svc", "start begin; cmd=" + cfg.DshCommand + " port=" + cfg.Port + " logdir=" + cfg.LogDir);
             ovPrimary.Enabled = false;
             ovSecondary.Enabled = false;
             ovTertiary.Enabled = false;
@@ -3601,12 +3651,15 @@ namespace DeepSeekHarness
         // npm 全局安装: 失败自动回退国内镜像重试一次
         string NpmInstallGlobal(string pkg, int timeoutMs)
         {
+            Program.DLog("npm", "install -g " + pkg + " reg=" + (string.IsNullOrEmpty(cfg.NpmRegistry) ? "(default)" : cfg.NpmRegistry));
             string r = RunCapture("cmd.exe", "/c npm install -g " + pkg + NpmRegArg(), timeoutMs);
             if (r == null && string.IsNullOrEmpty(cfg.NpmRegistry))
             {
                 AppendLog("[npm] 安装失败, 回退国内镜像重试 " + MirrorRegistry);
+                Program.DLog("npm", "fallback mirror " + MirrorRegistry);
                 r = RunCapture("cmd.exe", "/c npm install -g " + pkg + " --registry " + MirrorRegistry, timeoutMs);
             }
+            Program.DLog("npm", "result=" + (r == null ? "FAIL" : "OK"));
             return r;
         }
 
@@ -3627,9 +3680,10 @@ namespace DeepSeekHarness
                     RenderOverview();
                     RenderUpdateInfo();
                     RenderPlugins();
+                    // 注意: CheckLauncherUpdateNow 开头会直接写控件, 必须在 UI 线程调用
+                    if (!string.IsNullOrEmpty(cfg.LauncherUpdateUrl)) CheckLauncherUpdateNow();
                     checkingAuto = false;
                 });
-                if (!string.IsNullOrEmpty(cfg.LauncherUpdateUrl)) CheckLauncherUpdateNow();
             });
             worker.IsBackground = true;
             worker.Start();
@@ -3659,8 +3713,9 @@ namespace DeepSeekHarness
                     urls.Add("https://cdn.jsdelivr.net/gh/loudMore/dsh-launcher@main/version.txt");
                     foreach (string u in urls)
                     {
+                        Program.DLog("lupd", "try " + u);
                         string outp = RunCapture("curl.exe", "-s -L -m 25 \"" + u + "\"", 35000);
-                        if (outp == null) continue;
+                        if (outp == null) { Program.DLog("lupd", "failed " + u); continue; }
                         string[] lines = outp.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                         if (lines.Length > 0)
                         {
@@ -3851,8 +3906,8 @@ namespace DeepSeekHarness
                     foreach (string dir in Directory.GetDirectories(cfg.PluginsRoot))
                     {
                         if (!Directory.Exists(Path.Combine(dir, ".git"))) continue;
-                        string remote = RunCapture("git", string.Format("-C \"{0}\" ls-remote origin HEAD", dir), 20000);
-                        string local = RunCapture("git", string.Format("-C \"{0}\" rev-parse HEAD", dir), 10000);
+                        string remote = RunGit( string.Format("-C \"{0}\" ls-remote origin HEAD", dir), 20000);
+                        string local = RunGit( string.Format("-C \"{0}\" rev-parse HEAD", dir), 10000);
                         if (remote != null && local != null)
                         {
                             string[] parts = remote.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -3883,7 +3938,7 @@ namespace DeepSeekHarness
         {
             try
             {
-                string npmRoot = RunCapture("npm", "root -g", 15000);
+                string npmRoot = RunCapture("cmd.exe", "/c npm root -g", 15000);
                 if (npmRoot != null)
                 {
                     string p = Path.Combine(npmRoot.Trim(), cfg.NpmPackage, "package.json");
@@ -3911,7 +3966,7 @@ namespace DeepSeekHarness
                         if (!Directory.Exists(Path.Combine(dir, ".git"))) continue;
                         string name = Path.GetFileName(dir);
                         AppendLog("[update] git pull " + name);
-                        string r = RunCapture("git", string.Format("-C \"{0}\" pull", dir), 240000);
+                        string r = RunGit( string.Format("-C \"{0}\" pull", dir), 240000);
                         AppendLog("[update] plugin " + name + " " + (r == null ? "(超时/失败)" : "完成"));
                     }
                 }
@@ -3932,7 +3987,7 @@ namespace DeepSeekHarness
 
             var worker = new Thread(delegate ()
             {
-                string r = RunCapture("git", string.Format("-C \"{0}\" pull", p.Path), 120000);
+                string r = RunGit( string.Format("-C \"{0}\" pull", p.Path), 120000);
                 AppendLog("[plugin] git pull " + p.Name + (r == null ? " (超时/失败)" : " 完成"));
                 Ui(delegate
                 {
@@ -3969,7 +4024,7 @@ namespace DeepSeekHarness
                 foreach (var p in plugins)
                 {
                     if (!p.IsGit) continue;
-                    string r = RunCapture("git", string.Format("-C \"{0}\" pull", p.Path), 120000);
+                    string r = RunGit( string.Format("-C \"{0}\" pull", p.Path), 120000);
                     AppendLog("[plugin] git pull " + p.Name + (r == null ? " (超时/失败)" : " 完成"));
                     if (r == null) fail++; else ok++;
                 }
@@ -4025,7 +4080,11 @@ namespace DeepSeekHarness
             cfg.Language = newLang;
             // 自动检查更新 / 自动启动服务 / 自动打开浏览器 / 自动重启旧服务 均为内置默认行为
             cfg.ApplyDefaults();
-            cfg.Save();
+            if (!cfg.Save())
+            {
+                ShowError(Lang.T("操作失败"), "设置保存失败（配置文件可能被占用或无权限）:\n" + LauncherConfig.ConfigPath);
+                return;
+            }
 
             try { Environment.SetEnvironmentVariable("DSH_HOME", cfg.DshHome); } catch { }
 
@@ -4159,7 +4218,7 @@ namespace DeepSeekHarness
                 var p = Process.Start(psi);
                 string output = p.StandardOutput.ReadToEnd();
                 p.WaitForExit(5000);
-                string marker = ":" + port;
+                string marker = ":" + port + " ";
                 string[] lines = output.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string line in lines)
                 {
@@ -4225,7 +4284,40 @@ namespace DeepSeekHarness
 
         static string RunCapture(string program, string args, int timeoutMs)
         {
-            return Program.RunCaptureStatic(program, args, timeoutMs);
+            long t0 = Environment.TickCount;
+            string r = Program.RunCaptureStatic(program, args, timeoutMs);
+            if (Program.DebugMode)
+                Program.DLog("run", program + " " + args + " -> " + (r == null ? "TIMEOUT/FAIL" : "ok(" + r.Length + "B)") + " in " + (Environment.TickCount - t0) + "ms");
+            return r;
+        }
+
+        // git 调用: 使用检测到的完整 git.exe 路径, 并把其依赖目录(mingw64\bin、usr\bin)临时前置到 PATH。
+        // git for Windows 在受限 PATH 下缺少 MSYS 工具(usr\bin)会访问违例(0xC0000005), 必须补全
+        string RunGit(string args, int timeoutMs)
+        {
+            string git = !string.IsNullOrEmpty(currentEnv.GitPath) ? currentEnv.GitPath : "git";
+            string dir = Path.GetDirectoryName(git);
+            string prefix = "";
+            if (!string.IsNullOrEmpty(dir))
+            {
+                prefix = dir + ";";
+                try
+                {
+                    string root = Path.GetDirectoryName(dir);
+                    if (root.EndsWith("mingw64", StringComparison.OrdinalIgnoreCase) || root.EndsWith("mingw32", StringComparison.OrdinalIgnoreCase))
+                        root = Path.GetDirectoryName(root);
+                    string usrBin = Path.Combine(root, "usr", "bin");
+                    if (Directory.Exists(usrBin)) prefix += usrBin + ";";
+                    string gitBin = Path.Combine(root, "bin");
+                    if (Directory.Exists(gitBin) && !gitBin.Equals(dir, StringComparison.OrdinalIgnoreCase)) prefix += gitBin + ";";
+                }
+                catch { }
+            }
+            string oldPath = Environment.GetEnvironmentVariable("Path");
+            try { Environment.SetEnvironmentVariable("Path", prefix + oldPath); } catch { }
+            string r = RunCapture(git, args, timeoutMs);
+            try { Environment.SetEnvironmentVariable("Path", oldPath); } catch { }
+            return r;
         }
 
         // ============ 关闭 ============
