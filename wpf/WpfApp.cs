@@ -252,8 +252,13 @@ namespace DeepSeekHarness
         TextBlock ovLog;
         ProgressBar busy;
         string lastProxy = "";
-        TextBlock[] envName = new TextBlock[4], envVer = new TextBlock[4];
+        TextBlock[] envName = new TextBlock[4], envVer = new TextBlock[4], envPath = new TextBlock[4];
         TextBlock sbDot;
+        // 页面渲染缓存: 数据未变化时切页不重建, 直接复用已渲染的视觉树 (GPU 合成, 瞬时呈现)
+        bool[] pageReady = new bool[6];
+        bool[] pageDirty = new bool[6];
+        int curPage = 0;
+        Dictionary<string, string> pluginHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // 环境页
         StackPanel envRows;
@@ -447,6 +452,27 @@ namespace DeepSeekHarness
             Content = root;
         }
 
+        // 嵌入 PNG → ImageSource (pack URI)
+        static ImageSource LoadEmbeddedPng(string name)
+        {
+            try
+            {
+                var uri = new Uri("pack://application:,,,/" + name);
+                var s = Application.GetResourceStream(uri);
+                if (s == null) return null;
+                using (s.Stream)
+                {
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    bmp.BeginInit();
+                    bmp.StreamSource = s.Stream;
+                    bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bmp.EndInit();
+                    return bmp;
+                }
+            }
+            catch { return null; }
+        }
+
         // ---------- 标题栏 (WindowChrome 拖拽区) ----------
         Grid BuildTitleBar()
         {
@@ -455,8 +481,16 @@ namespace DeepSeekHarness
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
 
             var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
-            var dot = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(6), Background = Palette.Brush(Palette.Blue), VerticalAlignment = VerticalAlignment.Center };
-            dot.Child = new TextBlock { Text = "🐋", FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            var dot = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(8), Background = Palette.Brush(Palette.Blue), VerticalAlignment = VerticalAlignment.Center };
+            var whale = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
+            if (whale != null)
+            {
+                dot.Child = new System.Windows.Controls.Image { Source = whale, Stretch = Stretch.Uniform, Margin = new Thickness(4) };
+            }
+            else
+            {
+                dot.Child = new TextBlock { Text = "🐋", FontSize = 14, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            }
             var title = new TextBlock { Text = "DeepSeek Harness " + Lang.T("启动器"), Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             var sub = new TextBlock { Text = Lang.T("WPF 重构版"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, Margin = new Thickness(10, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             brand.Children.Add(dot);
@@ -510,8 +544,19 @@ namespace DeepSeekHarness
             sidebar.RowDefinitions.Add(new RowDefinition { Height = new GridLength(34) });  // 版本脚注
 
             var brandRow = new StackPanel { Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            brandRow.Children.Add(new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 16, FontWeight = FontWeights.Bold });
-            brandRow.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 11, Margin = new Thickness(1, 4, 0, 0) });
+            var brandLine = new StackPanel { Orientation = Orientation.Horizontal };
+            var logoBox = new Border { Width = 40, Height = 40, CornerRadius = new CornerRadius(11), Background = Palette.Brush(Palette.Blue), VerticalAlignment = VerticalAlignment.Center };
+            var whaleImg = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
+            if (whaleImg != null)
+                logoBox.Child = new System.Windows.Controls.Image { Source = whaleImg, Stretch = Stretch.Uniform, Margin = new Thickness(5) };
+            else
+                logoBox.Child = new TextBlock { Text = "🐋", FontSize = 20, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            var brandText = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            brandText.Children.Add(new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 15, FontWeight = FontWeights.Bold });
+            brandText.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 11, Margin = new Thickness(0, 3, 0, 0) });
+            brandLine.Children.Add(logoBox);
+            brandLine.Children.Add(brandText);
+            brandRow.Children.Add(brandLine);
 
             var navHost = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
             string[] names = { Lang.T("概览"), Lang.T("环境"), Lang.T("插件"), Lang.T("更新"), Lang.T("日志"), Lang.T("设置") };
@@ -525,14 +570,23 @@ namespace DeepSeekHarness
                 navHost.Children.Add(nav);
             }
 
-            var foot = new TextBlock
+            var foot = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(16, 0, 12, 8) };
+            var ghLnk = new TextBlock
+            {
+                Text = "⭐ github.com/loudMore/dsh-launcher",
+                Foreground = Palette.Brush(Palette.TextFaint),
+                FontSize = 11,
+                Cursor = Cursors.Hand,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            ghLnk.MouseLeftButtonUp += delegate { try { Process.Start("https://github.com/loudMore/dsh-launcher"); } catch { } };
+            foot.Children.Add(ghLnk);
+            foot.Children.Add(new TextBlock
             {
                 Text = "v1.5.0 · by loudMore",
                 Foreground = Palette.Brush(Palette.TextFaint),
-                FontSize = 11,
-                Margin = new Thickness(16, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
+                FontSize = 11
+            });
 
             Grid.SetRow(navHost, 1);
             Grid.SetRow(foot, 2);
@@ -582,7 +636,7 @@ namespace DeepSeekHarness
                 Text = "●",
                 Foreground = Palette.Brush(Palette.TextDim),
                 FontSize = 11,
-                Margin = new Thickness(14, 0, 6, 0),
+                Margin = new Thickness(18, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
             sbText = new TextBlock
@@ -712,13 +766,16 @@ namespace DeepSeekHarness
             {
                 var row = new Grid { Margin = new Thickness(0, 4, 0, 4) };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
                 envName[i] = new TextBlock { Text = tools[i], Foreground = Palette.Brush(Palette.TextDim), FontSize = 13 };
-                envVer[i] = new TextBlock { Text = "检测中…", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 13, HorizontalAlignment = HorizontalAlignment.Right, TextTrimming = TextTrimming.CharacterEllipsis };
-                Grid.SetColumn(envVer[i], 2);
+                envVer[i] = new TextBlock { Text = "检测中…", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 13, HorizontalAlignment = HorizontalAlignment.Left, TextTrimming = TextTrimming.CharacterEllipsis };
+                envPath[i] = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Left, TextTrimming = TextTrimming.CharacterEllipsis };
+                Grid.SetColumn(envVer[i], 1);
+                Grid.SetColumn(envPath[i], 2);
                 row.Children.Add(envName[i]);
                 row.Children.Add(envVer[i]);
+                row.Children.Add(envPath[i]);
                 envStack.Children.Add(row);
             }
             envCard.Child = envStack;
@@ -735,7 +792,7 @@ namespace DeepSeekHarness
             Grid.SetColumn(logHead.Children[1] as UIElement, 1);
             logStack.Children.Add(logHead);
             var console = new Border { Background = Palette.Brush(Palette.BgInput), CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 8, 0, 0) };
-            ovLog = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextDim), FontSize = 11, FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.NoWrap, MaxHeight = 150 };
+            ovLog = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextDim), FontSize = 11, FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.NoWrap, MinHeight = 190, MaxHeight = 280 };
             console.Child = ovLog;
             logStack.Children.Add(console);
             logCard.Child = logStack;
@@ -747,6 +804,14 @@ namespace DeepSeekHarness
             pg.Children.Add(head);
             pg.Children.Add(scroll);
             return pg;
+        }
+
+        // 版本号清理: "git version 2.53.0" → "2.53.0"
+        static string CleanVer(string v)
+        {
+            if (!string.IsNullOrEmpty(v) && v.StartsWith("git version ", StringComparison.OrdinalIgnoreCase))
+                return v.Substring("git version ".Length);
+            return v;
         }
 
         // 状态芯片 (圆角药丸)
@@ -813,6 +878,8 @@ namespace DeepSeekHarness
             var updTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(3) };
             updTimer.Tick += delegate { RunUpdateCheck(); };
             updTimer.Start();
+            // 后台预热插件本地版本 (异步, 不阻塞 UI)
+            RefreshPluginHashes();
         }
 
         void RenderOverview()
@@ -842,18 +909,24 @@ namespace DeepSeekHarness
                 ovSub.Text = Lang.T("环境已就绪，点击「一键启动」开始使用");
                 ovPrimary.Content = Lang.T("一键启动");
             }
-            string[] vers = { env.NodeVersion, env.NpmVersion, env.GitVersion, env.DshVersion };
+            string[] vers = { env.NodeVersion, env.NpmVersion, CleanVer(env.GitVersion), env.DshVersion };
             string[] paths = { env.NodePath, env.NpmPath, env.GitPath, env.DshPath };
             for (int i = 0; i < 4; i++)
             {
                 if (string.IsNullOrEmpty(paths[i]))
+                {
                     envVer[i].Text = Lang.T("未检测到");
+                    envVer[i].Foreground = Palette.Brush(Palette.Warn);
+                    envPath[i].Text = "";
+                }
                 else
                 {
-                    envVer[i].Text = (string.IsNullOrEmpty(vers[i]) ? "" : vers[i] + "  ·  ") + paths[i];
-                    envVer[i].ToolTip = paths[i];
+                    envVer[i].Text = string.IsNullOrEmpty(vers[i]) ? "" : vers[i];
+                    envVer[i].Foreground = Palette.Brush(Palette.TextDim);
+                    envPath[i].Text = paths[i];
+                    envPath[i].ToolTip = paths[i];
+                    envPath[i].Foreground = Palette.Brush(Palette.TextFaint);
                 }
-                envVer[i].Foreground = Palette.Brush(string.IsNullOrEmpty(paths[i]) ? Palette.Warn : Palette.TextFaint);
             }
             // 状态芯片 (卡片底部, 旧版布局)
             if (ovChips != null)
@@ -998,7 +1071,7 @@ namespace DeepSeekHarness
             envRows.Children.Clear();
             var env = dsh.Env;
             string[] names = { "Node.js", "npm", "Git", "dsh" };
-            string[] vers = { env.NodeVersion, env.NpmVersion, env.GitVersion, env.DshVersion };
+            string[] vers = { env.NodeVersion, env.NpmVersion, CleanVer(env.GitVersion), env.DshVersion };
             string[] paths = { env.NodePath, env.NpmPath, env.GitPath, env.DshPath };
             for (int i = 0; i < 4; i++)
             {
@@ -1006,21 +1079,32 @@ namespace DeepSeekHarness
                 var row = new Grid { Margin = new Thickness(0, 6, 0, 6) };
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 row.Children.Add(new TextBlock { Text = ok ? "●" : "○", Foreground = Palette.Brush(ok ? Palette.Success : Palette.Warn), FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
                 var nameTb = new TextBlock { Text = names[i], Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
                 Grid.SetColumn(nameTb, 1);
                 row.Children.Add(nameTb);
-                var info = new TextBlock
+                var verTb = new TextBlock
                 {
-                    Text = ok ? ((string.IsNullOrEmpty(vers[i]) ? "" : vers[i] + "   ") + paths[i]) : Lang.T("未检测到（可点击上方「一键安装」）"),
+                    Text = ok && !string.IsNullOrEmpty(vers[i]) ? vers[i] : "",
+                    Foreground = Palette.Brush(ok ? Palette.TextDim : Palette.Warn),
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(verTb, 2);
+                row.Children.Add(verTb);
+                var pathTb = new TextBlock
+                {
+                    Text = ok ? paths[i] : Lang.T("未检测到（可点击上方「一键安装」）"),
                     Foreground = Palette.Brush(ok ? Palette.TextFaint : Palette.Warn),
                     FontSize = 12,
                     VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    ToolTip = ok ? paths[i] : null
                 };
-                Grid.SetColumn(info, 2);
-                row.Children.Add(info);
+                Grid.SetColumn(pathTb, 3);
+                row.Children.Add(pathTb);
                 envRows.Children.Add(row);
             }
             envRows.Children.Add(new TextBlock
@@ -1084,7 +1168,7 @@ namespace DeepSeekHarness
             pg = PageShell("插件管理", out scroll);
             var stack = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
             var toolbar = new StackPanel { Orientation = Orientation.Horizontal };
-            toolbar.Children.Add(Btn("↻ " + Lang.T("刷新列表"), delegate { RenderPlugins(); }, false));
+            toolbar.Children.Add(Btn("↻ " + Lang.T("刷新列表"), delegate { RefreshPluginHashes(); pageDirty[2] = true; RenderPlugins(); }, false));
             toolbar.Children.Add(Btn("↓ " + Lang.T("安装插件"), delegate { InstallPluginPrompt(); }, false));
             toolbar.Children.Add(Btn("🛍 " + Lang.T("插件商城"), delegate { OpenStore(); }, true));
             toolbar.Children.Add(Btn("↻ " + Lang.T("全部更新"), delegate { UpdateAllPlugins(); }, false));
@@ -1137,8 +1221,9 @@ namespace DeepSeekHarness
                 });
                 if (p.IsGit)
                 {
-                    string h = dsh.LocalHash(p);
-                    nameCol.Children.Add(new TextBlock { Text = "本地 " + h, Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11 });
+                    string h;
+                    if (pluginHashes.TryGetValue(p.Name, out h) && h.Length > 0)
+                        nameCol.Children.Add(new TextBlock { Text = "本地 " + h, Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11 });
                 }
                 row.Children.Add(nameCol);
                 var urlLbl = new TextBlock
@@ -1208,7 +1293,7 @@ namespace DeepSeekHarness
                 {
                     RenderPlugins();
                     if (err.Length > 0) MessageBox.Show(this, err, "插件安装失败", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    else { sbText.Text = "插件已安装"; RenderPlugins(); RunDetect(); }
+                    else { MarkDirty(2); MarkDirty(0); sbText.Text = "插件已安装"; RenderPlugins(); RunDetect(); }
                 }));
             });
             t.IsBackground = true;
@@ -1225,7 +1310,7 @@ namespace DeepSeekHarness
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     SetBusy(false);
-                    sbText.Text = "插件更新完成";
+                    MarkDirty(2); MarkDirty(0); sbText.Text = "插件更新完成";
                     MessageBox.Show(this, string.Join("\n", results), "全部更新", MessageBoxButton.OK, MessageBoxImage.Information);
                     RenderPlugins();
                 }));
@@ -1246,7 +1331,7 @@ namespace DeepSeekHarness
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     SetBusy(false);
-                    sbText.Text = "一键维护完成";
+                    MarkDirty(2); MarkDirty(0); sbText.Text = "一键维护完成";
                     MessageBox.Show(this, string.Join("\n", lines.ToArray()), "一键维护", MessageBoxButton.OK, MessageBoxImage.Information);
                     RenderPlugins();
                 }));
@@ -1346,7 +1431,7 @@ namespace DeepSeekHarness
                     upLupNote.Text = newer ? "发现新版本，可前往 GitHub 下载" : "已是最新版本";
                     upLupNote.Foreground = Palette.Brush(newer ? Palette.Warn : Palette.TextFaint);
                     RenderUpdate();
-                    sbText.Text = "检查更新完成";
+                    MarkDirty(3); sbText.Text = "检查更新完成";
                 }));
             });
             t.IsBackground = true;
@@ -1521,7 +1606,7 @@ namespace DeepSeekHarness
             dsh.Cfg.ApplyDefaults();
             if (dsh.Cfg.Save())
             {
-                sbText.Text = "设置已保存";
+                MarkDirty(0); MarkDirty(1); sbText.Text = "设置已保存";
                 MessageBox.Show(this, "设置已保存。\n\n端口/路径等改动在下次启动服务时生效。", "设置", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else MessageBox.Show(this, "设置保存失败（配置文件可能被占用或无权限）。", "设置", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1664,27 +1749,68 @@ namespace DeepSeekHarness
         void SwitchPage(int idx)
         {
             for (int i = 0; i < navs.Count; i++) navs[i].Active = (i == idx);
+            curPage = idx;
             if (host.Children.Count > 0 && host.Children[0] == pages[idx]) return;
             var page = pages[idx];
             host.Children.Clear();
             host.Children.Add(page);
-            if (idx == 0) RenderOverview();
-            else if (idx == 1) RenderEnv();
-            else if (idx == 2) RenderPlugins();
-            else if (idx == 3) RenderUpdate();
-            else if (idx == 4) RefreshLog();
+            // 脏标记缓存: 仅首次进入或数据变化时重建, 其余切页直接复用已渲染视觉树 → 瞬时呈现
+            if (!pageReady[idx] || pageDirty[idx])
+            {
+                if (idx == 0) RenderOverview();
+                else if (idx == 1) RenderEnv();
+                else if (idx == 2) RenderPlugins();
+                else if (idx == 3) RenderUpdate();
+                else if (idx == 4) RefreshLog();
+                pageReady[idx] = true;
+                pageDirty[idx] = false;
+            }
             if (IsLoaded)
             {
-                // 仅窗口加载完成后播放动画; 未加载时直接整帧呈现, 避免停在透明
+                // 过渡动画: 淡入 + 轻微上滑 (WPF 合成器 GPU 播放, 不掉帧)
                 page.Opacity = 0.0;
-                var anim = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(170));
-                anim.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-                page.BeginAnimation(UIElement.OpacityProperty, anim);
+                var tr = new TranslateTransform(0, 10);
+                page.RenderTransform = tr;
+                var fade = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(160));
+                fade.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+                page.BeginAnimation(UIElement.OpacityProperty, fade);
+                var slide = new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(160));
+                slide.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+                tr.BeginAnimation(TranslateTransform.YProperty, slide);
             }
             else
             {
                 page.Opacity = 1.0;
             }
+        }
+
+        // 标记页面数据已变化 (下次切到该页时重建)
+        void MarkDirty(int idx)
+        {
+            if (idx >= 0 && idx < 6) pageDirty[idx] = true;
+        }
+
+        // 后台线程计算插件本地哈希 (避免 UI 线程跑 git 子进程卡顿)
+        void RefreshPluginHashes()
+        {
+            var t = new Thread(delegate()
+            {
+                var plugins = dsh.ScanPlugins();
+                var h = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in plugins)
+                    if (p.IsGit)
+                    {
+                        string hash = dsh.LocalHash(p);
+                        if (hash.Length > 0) h[p.Name] = hash;
+                    }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    pluginHashes = h;
+                    if (curPage == 2) { pageDirty[2] = true; RenderPlugins(); }
+                }));
+            });
+            t.IsBackground = true;
+            t.Start();
         }
     }
 }
