@@ -46,6 +46,15 @@ namespace DeepSeekHarness
         [DllImport("shell32.dll")]
         static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
 
+        [DllImport("user32.dll")]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        public static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+
         [STAThread]
         static void Main()
         {
@@ -123,7 +132,14 @@ namespace DeepSeekHarness
         public static GraphicsPath RoundRectPath(Rectangle r, int radius)
         {
             var path = new GraphicsPath();
-            int d = radius * 2;
+            // 防御: 尺寸过小/非法时退回矩形路径, 避免 GDI+ 参数无效异常
+            if (r.Width < 4 || r.Height < 4 || radius <= 0)
+            {
+                path.AddRectangle(new Rectangle(r.X, r.Y, Math.Max(1, r.Width), Math.Max(1, r.Height)));
+                path.CloseFigure();
+                return path;
+            }
+            int d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
             path.AddArc(r.X, r.Y, d, d, 180, 90);
             path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
             path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
@@ -684,6 +700,7 @@ namespace DeepSeekHarness
             { "预览", "Preview" }, { "搜索插件…", "Search plugins…" },
             { "缓存", "cache" }, { "按星标排序", "Sort by stars" }, { "按名称排序", "Sort by name" }, { "默认顺序", "Default order" },
             { "全部语言", "All languages" }, { "正在刷新…", "Refreshing…" }, { "浏览", "Browse" },
+            { "已安装", "Installed" }, { "加载更多", "Load more" }, { "剩余 {0} 个", "{0} more" }, { "GitHub 项目主页", "GitHub project" },
             { "安装", "Install" }, { "网页", "Web" }, { "数据来自 GitHub 主题 dsh-plugin · 支持搜索筛选", "Data from GitHub topic dsh-plugin" },
             { "正在获取插件列表…", "Fetching plugin list…" }, { "获取失败：需要能访问 GitHub，请检查网络后重试", "Fetch failed: GitHub access required" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { "没有匹配的插件，换个关键词试试", "No matching plugins" },
@@ -823,6 +840,7 @@ namespace DeepSeekHarness
         public Color GradTop = Color.Empty;      // 默认使用主题微亮渐变, 可覆盖
         public Color GradBottom = Color.Empty;
         public bool TopAccent;                   // 顶部品牌蓝渐变修饰线 (仅概览主卡)
+        GraphicsPath cachedPath;                 // 圆角路径缓存: 尺寸不变时不再重建, 大幅降低重绘开销
 
         public RoundPanel()
         {
@@ -833,22 +851,29 @@ namespace DeepSeekHarness
             GradBottom = DshTheme.BgCard;
         }
 
+        GraphicsPath Path()
+        {
+            if (cachedPath == null)
+                cachedPath = Program.RoundRectPath(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), Radius);
+            return cachedPath;
+        }
+
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             base.OnPaintBackground(e);
-            if (GradTop != Color.Empty)
+            if (GradTop != Color.Empty && ClientRectangle.Width > 1 && ClientRectangle.Height > 1)
             {
                 var g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 using (var b = new LinearGradientBrush(ClientRectangle, GradTop, GradBottom, 90f))
-                using (var p = Program.RoundRectPath(new Rectangle(0, 0, Width - 1, Height - 1), Radius))
-                    g.FillPath(b, p);
+                    g.FillPath(b, Path());
             }
         }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (cachedPath != null) { cachedPath.Dispose(); cachedPath = null; }
             if (Width > 4 && Height > 4)
             {
                 var oldRegion = Region;
@@ -857,14 +882,19 @@ namespace DeepSeekHarness
             }
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (cachedPath != null) { cachedPath.Dispose(); cachedPath = null; }
+            base.Dispose(disposing);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var p = Program.RoundRectPath(new Rectangle(0, 0, Width - 1, Height - 1), Radius))
             using (var pen = new Pen(BorderColor, 1f))
-                g.DrawPath(pen, p);
+                g.DrawPath(pen, Path());
             if (TopAccent && Width > Radius * 2 + 8)
             {
                 int ah = Math.Max(2, (int)Math.Round(2 * DshTheme.S));
@@ -898,12 +928,27 @@ namespace DeepSeekHarness
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (cachedPath != null) { cachedPath.Dispose(); cachedPath = null; }
             if (Width > 4 && Height > 4)
             {
                 var oldRegion = Region;
                 Region = new Region(Program.RoundRectPath(new Rectangle(0, 0, Width, Height), Radius));
                 if (oldRegion != null) oldRegion.Dispose();
             }
+        }
+
+        GraphicsPath cachedPath;   // 圆角路径缓存: 尺寸不变时复用, 降低重绘开销
+        GraphicsPath Path()
+        {
+            if (cachedPath == null)
+                cachedPath = Program.RoundRectPath(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), Radius);
+            return cachedPath;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (cachedPath != null) { cachedPath.Dispose(); cachedPath = null; }
+            base.Dispose(disposing);
         }
 
         // 主按钮悬停提亮: 由 FlatAppearance.MouseOverBackColor 处理, 此 OnPaint 仅为圆角
@@ -931,7 +976,7 @@ namespace DeepSeekHarness
             // 关键擦除: 实测 Button 的 OnPaintBackground 在本配置下不会被调用(框架跳过背景绘制),
             // 因此擦除必须在 OnPaint 开头进行 —— 先用父背景切片覆盖客户区, 杜绝任何底层残影
             Program.EraseWithParentBackground(this, g);
-            using (var path = Program.RoundRectPath(new Rectangle(0, 0, Width - 1, Height - 1), Radius))
+            GraphicsPath path = Path();   // 复用缓存路径, 切勿 using 释放
             {
                 if (Primary)
                 {
@@ -1159,7 +1204,7 @@ namespace DeepSeekHarness
         public BufPanel()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.ResizeRedraw, true);
         }
     }
 
@@ -1168,14 +1213,16 @@ namespace DeepSeekHarness
     {
         int y;
         public int PadLeft = 4;
+        public int PadRight = 4;
         public int Gap = 8;
+        public bool HideNativeScroll;                 // 隐藏原生滚动条 (配合 SlimScrollBar 美化)
+        public event Action SlimChanged;              // 滚动/尺寸变化通知自定义滚动条
 
         public StackPanel()
         {
             AutoScroll = true;
-            DoubleBuffered = true;
+            DoubleBuffered = false;   // 透明面板不开自带双缓冲: 由窗体级整屏缓冲统一处理, 避免透明+缓冲产生黑块
             BackColor = Color.Transparent;
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         }
 
         public void BeginAdd() { y = 4; }
@@ -1185,11 +1232,12 @@ namespace DeepSeekHarness
             c.Top = y;
             c.Left = PadLeft;
             c.Height = height;
-            c.Width = Math.Max(10, ClientSize.Width - PadLeft * 2);
+            c.Width = Math.Max(10, ClientSize.Width - PadLeft - PadRight);
             c.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
             Controls.Add(c);
             y += height + Gap;
             AutoScrollMinSize = new Size(0, y + 4);
+            NotifySlim();
         }
 
         public void ClearAll()
@@ -1197,13 +1245,110 @@ namespace DeepSeekHarness
             Controls.Clear();
             y = 4;
             AutoScrollMinSize = new Size(0, 4);
+            NotifySlim();
         }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
             foreach (Control c in Controls)
-                c.Width = Math.Max(10, ClientSize.Width - PadLeft * 2);
+                c.Width = Math.Max(10, ClientSize.Width - PadLeft - PadRight);
+            NotifySlim();
+        }
+
+        protected override void OnScroll(ScrollEventArgs se)
+        {
+            base.OnScroll(se);
+            NotifySlim();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            try { if (HideNativeScroll) Program.ShowScrollBar(Handle, 1, false); } catch { }
+        }
+
+        void NotifySlim()
+        {
+            if (HideNativeScroll && SlimChanged != null) SlimChanged();
+        }
+    }
+
+    // ---------- 细窄圆角滚动条 (自绘, 替代原生滚动条, 支持拖拽/滚轮) ----------
+    class SlimScrollBar : Control
+    {
+        StackPanel target;
+        bool dragging;
+        bool hover;
+        int dragY;
+        int dragStartPos;
+
+        public SlimScrollBar(StackPanel t)
+        {
+            target = t;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Default;
+            target.SlimChanged += delegate { Invalidate(); };
+            MouseEnter += delegate { hover = true; Invalidate(); };
+            MouseLeave += delegate { hover = false; Invalidate(); };
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e) { }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            int total = target.AutoScrollMinSize.Height;
+            int view = target.ClientSize.Height;
+            if (total <= view + 2) return;   // 无内容溢出时不显示
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            int max = Math.Max(1, total - view);
+            int pos = -target.AutoScrollPosition.Y;
+            pos = Math.Min(pos, max);
+            int thumbH = Math.Max((int)Math.Round(30 * DshTheme.S), view * view / total);
+            int trackH = Math.Max(1, Height - thumbH);
+            int thumbY = (int)((long)pos * trackH / max);
+            int a = dragging ? 130 : (hover ? 90 : 55);
+            using (var b = new SolidBrush(Color.FromArgb(a, 255, 255, 255)))
+            using (var p = Program.RoundRectPath(new Rectangle(0, thumbY, Math.Max(3, Width - 1), thumbH), Math.Max(2, Width / 2)))
+                g.FillPath(b, p);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left) return;
+            int total = target.AutoScrollMinSize.Height;
+            int view = target.ClientSize.Height;
+            if (total <= view + 2) return;
+            dragging = true;
+            dragY = e.Y;
+            dragStartPos = -target.AutoScrollPosition.Y;
+            Invalidate();
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (!dragging) return;
+            int total = target.AutoScrollMinSize.Height;
+            int view = target.ClientSize.Height;
+            int max = Math.Max(1, total - view);
+            int thumbH = Math.Max((int)Math.Round(30 * DshTheme.S), view * view / total);
+            int trackH = Math.Max(1, Height - thumbH);
+            int delta = (int)((long)(e.Y - dragY) * max / trackH);
+            int np = Math.Max(0, Math.Min(max, dragStartPos + delta));
+            target.AutoScrollPosition = new Point(0, np);
+            target.Invalidate();
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            dragging = false;
+            Invalidate();
         }
     }
 
@@ -1567,7 +1712,7 @@ namespace DeepSeekHarness
             BuildTitleBar();  // 最后标题栏 (Dock=Top)
             BuildTray();
 
-            logTimer = new Timer { Interval = 1500 };
+            logTimer = new Timer { Interval = 3000 };
             logTimer.Tick += delegate { RefreshLogViews(); };
             logTimer.Start();
 
@@ -1668,9 +1813,37 @@ namespace DeepSeekHarness
             WindowState = (WindowState == FormWindowState.Maximized) ? FormWindowState.Normal : FormWindowState.Maximized;
         }
 
-        // 无边框窗口: 边缘拖拽缩放 (WM_NCHITTEST)
+        // 整窗离屏合成 (WS_EX_COMPOSITED): 所有子控件绘制进同一合成表面, 整帧原子呈现 —— 彻底消除
+        // 切换页面/弹窗/缩放时的"拼图式"渐进渲染; 结合下方 WM_SIZE 重建缓冲, 规避最大化花屏
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000;
+                return cp;
+            }
+        }
+
+        bool inSizeSync;
+
+        // 无边框窗口: 边缘拖拽缩放 (WM_NCHITTEST) + 合成窗口尺寸变化后强制重建缓冲 (WM_SIZE)
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == 0x0005 && !inSizeSync)
+            {
+                inSizeSync = true;
+                base.WndProc(ref m);
+                try
+                {
+                    // FRAMECHANGED: 通知合成器重建表面, 修复最大化/缩放瞬间的残留花屏
+                    Program.SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0,
+                        0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020);
+                }
+                catch { }
+                inSizeSync = false;
+                return;
+            }
             base.WndProc(ref m);
             if (m.Msg == 0x84 && WindowState != FormWindowState.Maximized)
             {
@@ -2082,13 +2255,21 @@ namespace DeepSeekHarness
                 BackColor = Color.Transparent,
                 Padding = new Padding(0, Px(4), 0, 0)
             };
-            // 工具栏按钮统一宽度、统一暗色风格 (傻瓜式: 一眼整齐, 不分主次打扰)
+            // 工具栏按钮统一宽度、统一暗色风格; 窗口变窄时六个按钮等比例缩短, 永远保持一行
             pluginRefresh = MakeBtn(Lang.T("刷新列表"), Px(108), Px(36), false); pluginRefresh.Margin = new Padding(0, 0, Px(8), 0); pluginRefresh.Click += delegate { RenderPlugins(); };
             pluginInstall = MakeBtn(Lang.T("安装插件"), Px(108), Px(36), false); pluginInstall.Margin = new Padding(0, 0, Px(8), 0); pluginInstall.Click += delegate { InstallPlugin(); };
             var pluginStoreBtn = MakeBtn("🛍 " + Lang.T("插件商城"), Px(108), Px(36), false); pluginStoreBtn.Margin = new Padding(0, 0, Px(8), 0); pluginStoreBtn.Click += delegate { OpenStoreWindow(); };
             pluginUpdateAll = MakeBtn("↻ " + Lang.T("全部更新"), Px(108), Px(36), false); pluginUpdateAll.Margin = new Padding(0, 0, Px(8), 0); pluginUpdateAll.Click += delegate { UpdateAllPlugins(); };
             pluginRepair = MakeBtn(Lang.T("修复依赖"), Px(108), Px(36), false); pluginRepair.Margin = new Padding(0, 0, Px(8), 0); pluginRepair.Click += delegate { RepairPlugins(); };
             pluginMaintain = MakeBtn(Lang.T("一键维护"), Px(108), Px(36), false); pluginMaintain.Margin = Padding.Empty; pluginMaintain.Click += delegate { MaintainPlugins(); };
+            Action relayout = delegate
+            {
+                int avail = toolbar.ClientSize.Width - toolbar.Padding.Horizontal - Px(8) * 5;
+                int w = Math.Max(Px(64), avail / 6);
+                pluginRefresh.Width = pluginInstall.Width = pluginStoreBtn.Width = pluginUpdateAll.Width = pluginRepair.Width = pluginMaintain.Width = w;
+            };
+            toolbar.Resize += delegate { relayout(); };
+            relayout();
             toolbar.Controls.AddRange(new Control[] { pluginRefresh, pluginInstall, pluginStoreBtn, pluginUpdateAll, pluginRepair, pluginMaintain });
 
             // ---- 已安装插件管理 ----
@@ -2263,10 +2444,10 @@ namespace DeepSeekHarness
             AddRow(stack, MakeSection(Lang.T("设置")), SizeType.Absolute, Px(32));
 
             var card = new RoundPanel();
-            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(Px(14)), ColumnCount = 2, RowCount = 10, BackColor = Color.Transparent };
+            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(Px(14)), ColumnCount = 2, RowCount = 11, BackColor = Color.Transparent };
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Px(124)));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 11; i++)
                 grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Px(i < 9 ? 38 : 48)));
 
             setCmd = NewSettingBox(grid, 0, 6, Lang.T("dsh 命令"), cfg.DshCommand);
@@ -2311,6 +2492,24 @@ namespace DeepSeekHarness
             var setProxyDetect = MakeBtn(Lang.T("检测代理"), Px(88), Px(36), false); setProxyDetect.Margin = Padding.Empty; setProxyDetect.Click += delegate { DetectProxyUi(); };
             btnCell.Controls.AddRange(new Control[] { setDetect, setSave, setOpenCfg, setShortcut, setProxyDetect });
             grid.Controls.Add(btnCell, 1, 9);
+
+            // 项目主页链接 (点击打开 GitHub 仓库, 反馈/发版/源码都在这里)
+            var ghLink = new Label
+            {
+                Text = "⭐ " + Lang.T("GitHub 项目主页") + ": github.com/loudMore/dsh-launcher",
+                Dock = DockStyle.Fill,
+                ForeColor = DshTheme.BlueLight,
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Cursor = Cursors.Hand,
+                Font = new Font(DshFonts.Body, FontStyle.Underline),
+                Margin = new Padding(0, Px(4), 0, 0)
+            };
+            ghLink.Click += delegate { try { Process.Start("https://github.com/loudMore/dsh-launcher"); } catch { } };
+            ghLink.MouseEnter += delegate { ghLink.ForeColor = DshTheme.BlueHover; };
+            ghLink.MouseLeave += delegate { ghLink.ForeColor = DshTheme.BlueLight; };
+            grid.SetColumnSpan(ghLink, 2);
+            grid.Controls.Add(ghLink, 0, 10);
 
             card.Controls.Add(grid);
 
@@ -2563,6 +2762,26 @@ namespace DeepSeekHarness
             worker.Start();
         }
 
+        // 商城用: 判断插件是否已安装 (插件目录下的文件夹名, 忽略 .disabled 后缀)
+        public bool IsPluginInstalled(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            try
+            {
+                string root = cfg.PluginsRoot;
+                if (!Directory.Exists(root)) return false;
+                foreach (string d in Directory.GetDirectories(root))
+                {
+                    string n = Path.GetFileName(d);
+                    if (n.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase))
+                        n = n.Substring(0, n.Length - ".disabled".Length);
+                    if (string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         // 手动触发代理探测并回填输入框
         void DetectProxyUi()
         {
@@ -2717,12 +2936,14 @@ namespace DeepSeekHarness
                 navs[i].Active = (i == idx);
                 pages[i].Visible = (i == idx);
             }
-            pages[idx].Invalidate(true);   // 切页后整页(含所有自绘子控件)干净重绘, 不留残影
             if (idx == 0) RenderOverview();
             else if (idx == 1) RenderEnvironment();
             else if (idx == 2) RenderPlugins();
             else if (idx == 3) RenderUpdateInfo();
             else if (idx == 4) RefreshLogViews();
+            // 合成窗口只重绘失效区域: 整窗失效一次, 保证侧栏高亮与内容页同步更新
+            Invalidate(true);
+            try { Update(); } catch { }
         }
 
         // ============ 状态与UI刷新 ============
@@ -3235,6 +3456,16 @@ namespace DeepSeekHarness
                 Font = DshFonts.MonoSmall
             };
             detailLbl.Width = Math.Max(10, row.Width - Px(320));
+            if (p.IsGit && !string.IsNullOrEmpty(p.RemoteUrl))
+            {
+                // 仓库地址做成可点击链接: 蓝色下划线, 点击直接打开仓库主页
+                detailLbl.ForeColor = DshTheme.BlueLight;
+                detailLbl.Cursor = Cursors.Hand;
+                detailLbl.Font = new Font(DshFonts.MonoSmall, FontStyle.Underline);
+                detailLbl.Click += delegate { try { Process.Start(p.RemoteUrl); } catch { } };
+                detailLbl.MouseEnter += delegate { detailLbl.ForeColor = DshTheme.BlueHover; };
+                detailLbl.MouseLeave += delegate { detailLbl.ForeColor = DshTheme.BlueLight; };
+            }
 
             var pullBtn = MakeBtn("↻ " + Lang.T("更新"), Px(76), Px(28), false);
             var openBtn = MakeBtn(Lang.T("目录"), Px(64), Px(28), false);
@@ -3499,8 +3730,12 @@ namespace DeepSeekHarness
 
             var worker = new Thread(delegate ()
             {
-                ResolveProxy();   // 探测本机代理(Clash 等)并注入子进程环境, 让 curl/npm/git 走代理
+                // 代理探测与环境检测并行进行, 缩短启动时间 (各自只读环境, 互不依赖)
+                var proxyT = new Thread(delegate() { try { ResolveProxy(); } catch { } });
+                proxyT.IsBackground = true;
+                proxyT.Start();
                 EnvInfo env = DetectEnvironment();
+                try { proxyT.Join(8000); } catch { }
                 Program.DLog("startup", "detect done; node=" + env.NodePath + " npm=" + env.NpmPath + " git=" + env.GitPath + " dsh=" + env.DshPath + " v" + env.DshVersion);
                 currentEnv = env;
                 Ui(delegate
@@ -5312,6 +5547,7 @@ namespace DeepSeekHarness
         Timer retryTimer;
         bool pending;
         int autoTries;
+        int shownLimit = 80;   // 懒渲染: 每次最多渲染的行数 (加载更多追加)
 
         // 启动时预热: 后台拉好列表写入缓存, 打开商城秒出结果 (无需手动点获取)
         public static List<StoreItem> WarmList;
@@ -5319,9 +5555,35 @@ namespace DeepSeekHarness
 
         int P(int v) { return (int)Math.Round(v * DshTheme.S); }
 
-        // 无边框窗口: 边缘出现缩放指针并支持拖拽调整大小 (WM_NCHITTEST)
+        // 整窗离屏合成: 列表滚动/重绘整帧呈现
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000;
+                return cp;
+            }
+        }
+
+        bool inSizeSync;
+
+        // 无边框窗口: 边缘缩放指针 + 拖拽调整大小 (WM_NCHITTEST) + 尺寸变化重建合成缓冲 (WM_SIZE)
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == 0x0005 && !inSizeSync)
+            {
+                inSizeSync = true;
+                base.WndProc(ref m);
+                try
+                {
+                    Program.SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0,
+                        0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020);
+                }
+                catch { }
+                inSizeSync = false;
+                return;
+            }
             base.WndProc(ref m);
             if (m.Msg == 0x84)
             {
@@ -5362,6 +5624,21 @@ namespace DeepSeekHarness
             KeyPreview = true;
             KeyDown += delegate(object s, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) Close(); };
             BuildUi();
+            // 滚轮兜底: 焦点落在搜索框/按钮上时, 鼠标在列表区滚动仍能滚动列表 (丝滑体验)
+            MouseWheel += delegate(object s, MouseEventArgs e)
+            {
+                try
+                {
+                    if (list == null) return;
+                    int max = Math.Max(0, list.AutoScrollMinSize.Height - list.ClientSize.Height);
+                    if (max <= 0) return;
+                    int step = (int)(120 * DshTheme.S);
+                    int pos = Math.Max(0, Math.Min(max, -list.AutoScrollPosition.Y - Math.Sign(e.Delta) * step));
+                    list.AutoScrollPosition = new Point(0, pos);
+                    list.Invalidate();
+                }
+                catch { }
+            };
             retryTimer = new Timer();
             retryTimer.Interval = 15000;
             retryTimer.Tick += delegate { retryTimer.Stop(); FetchList(true); };
@@ -5423,14 +5700,40 @@ namespace DeepSeekHarness
         public static List<StoreItem> Fetch(string proxy)
         {
             var got = new List<StoreItem>();
-            string json = null;
-            try
+            // GitHub 搜索 API 分页拉取: topic:dsh-plugin 有数百个仓库, 每页 100 条, 最多 5 页 (500 条)
+            int total = 0;
+            for (int page = 1; page <= 5; page++)
             {
-                byte[] b = SmartHttp.Get("https://api.github.com/search/repositories?q=topic%3Adsh-plugin&sort=stars&order=desc&per_page=100", proxy, 20000);
-                if (b != null) json = SmartHttp.Decode(b);
+                string json = null;
+                try
+                {
+                    byte[] b = SmartHttp.Get("https://api.github.com/search/repositories?q=topic%3Adsh-plugin&sort=stars&order=desc&per_page=100&page=" + page, proxy, 12000);
+                    if (b != null) json = SmartHttp.Decode(b);
+                }
+                catch { }
+                if (string.IsNullOrEmpty(json)) break;
+                if (page == 1)
+                {
+                    Match tm = Regex.Match(json, "\"total_count\"\\s*:\\s*(\\d+)");
+                    int tc;
+                    if (tm.Success && int.TryParse(tm.Groups[1].Value, out tc)) total = tc;
+                }
+                var batch = LauncherForm.ParseStoreJson(json);
+                if (batch.Count == 0) break;
+                got.AddRange(batch);
+                if (batch.Count < 100) break;               // 最后一页
+                if (total > 0 && got.Count >= total) break; // 已全部取回
+                try { Thread.Sleep(900); } catch { }        // 搜索接口限速友好 (未登录 10 次/分钟)
             }
-            catch { }
-            if (!string.IsNullOrEmpty(json)) got = LauncherForm.ParseStoreJson(json);
+            // 按 FullName 去重 (分页过程中数据可能轻微漂移)
+            if (got.Count > 1)
+            {
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var clean = new List<StoreItem>();
+                foreach (var it in got)
+                    if (seen.Add(it.FullName)) clean.Add(it);
+                got = clean;
+            }
             if (got.Count == 0)
             {
                 string[] mdUrls = {
@@ -5440,11 +5743,12 @@ namespace DeepSeekHarness
                 foreach (string u in mdUrls)
                 {
                     string md = null;
-                    try { byte[] b = SmartHttp.Get(u, proxy, 15000); if (b != null) md = SmartHttp.Decode(b); } catch { }
+                    try { byte[] b = SmartHttp.Get(u, proxy, 8000); if (b != null) md = SmartHttp.Decode(b); } catch { }
                     got = LauncherForm.ParseMdList(md);
                     if (got.Count > 0) break;
                 }
             }
+            Program.DLog("store", "fetch total=" + total + " got=" + got.Count);
             return got;
         }
 
@@ -5487,7 +5791,7 @@ namespace DeepSeekHarness
                 Placeholder = Lang.T("搜索插件…"),
                 Margin = new Padding(0, P(3), P(8), 0)
             };
-            search.TextChanged += delegate { Render(); };
+            search.TextChanged += delegate { shownLimit = 80; Render(); };
             sort = new ModernDropdown
             {
                 Width = P(140),
@@ -5495,7 +5799,7 @@ namespace DeepSeekHarness
                 Margin = new Padding(0, P(3), P(8), 0)
             };
             sort.SetItems(new string[] { "★ " + Lang.T("按星标排序"), Lang.T("按名称排序"), Lang.T("默认顺序") }, 0);
-            sort.SelectionChanged += delegate { Render(); };
+            sort.SelectionChanged += delegate { shownLimit = 80; Render(); };
             langFilter = new ModernDropdown
             {
                 Width = P(116),
@@ -5503,7 +5807,7 @@ namespace DeepSeekHarness
                 Margin = new Padding(0, P(3), P(8), 0)
             };
             langFilter.SetItems(new string[] { Lang.T("全部语言") }, 0);
-            langFilter.SelectionChanged += delegate { Render(); };
+            langFilter.SelectionChanged += delegate { shownLimit = 80; Render(); };
             fetchBtn = MakeBtn("↻ " + Lang.T("获取列表"), P(96), P(34), true);
             fetchBtn.Margin = new Padding(0, 0, P(8), 0);
             fetchBtn.Click += delegate { FetchList(false); };
@@ -5531,7 +5835,13 @@ namespace DeepSeekHarness
             list = new StackPanel { Dock = DockStyle.Fill };
             list.Gap = P(8);
             list.PadLeft = P(2);
+            list.PadRight = P(6);
+            list.HideNativeScroll = true;
             card.Controls.Add(list);
+            // 细窄圆角自绘滚动条 (替代原生滚动条, 更现代)
+            var slim = new SlimScrollBar(list) { Dock = DockStyle.Right, Width = P(8) };
+            slim.BringToFront();
+            card.Controls.Add(slim);
 
             Controls.Add(card);
             Controls.Add(toolbar);
@@ -5588,7 +5898,21 @@ namespace DeepSeekHarness
             string raw = (search == null ? "" : search.Text.Trim().ToLowerInvariant());
             string[] terms = raw.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             string langSel = (langFilter == null || langFilter.SelectedIndex <= 0) ? "" : langFilter.SelectedItem;
-            int shown = 0;
+            if (items.Count == 0)
+            {
+                var empty = new Label
+                {
+                    Text = Lang.T("正在刷新…"),
+                    AutoSize = false,
+                    ForeColor = DshTheme.TextDim,
+                    BackColor = Color.Transparent,
+                    Font = DshFonts.Body
+                };
+                list.Add(empty, P(60));
+                return;
+            }
+            // 先过滤出全部命中项 (搜索/筛选作用于完整列表), 再按分页量懒渲染, 几百个插件也不卡
+            var matches = new List<StoreItem>();
             foreach (var it in Sorted())
             {
                 if (!string.IsNullOrEmpty(langSel) && !string.Equals(it.Lang, langSel, StringComparison.OrdinalIgnoreCase))
@@ -5604,23 +5928,9 @@ namespace DeepSeekHarness
                         && it.Lang.ToLowerInvariant().IndexOf(term) < 0)
                     { ok = false; break; }
                 }
-                if (!ok) continue;
-                AddRow(it);
-                shown++;
+                if (ok) matches.Add(it);
             }
-            if (items.Count == 0)
-            {
-                var empty = new Label
-                {
-                    Text = Lang.T("正在刷新…"),
-                    AutoSize = false,
-                    ForeColor = DshTheme.TextDim,
-                    BackColor = Color.Transparent,
-                    Font = DshFonts.Body
-                };
-                list.Add(empty, P(60));
-            }
-            else if (shown == 0)
+            if (matches.Count == 0)
             {
                 var empty = new Label
                 {
@@ -5631,10 +5941,38 @@ namespace DeepSeekHarness
                     Font = DshFonts.Body
                 };
                 list.Add(empty, P(60));
+                return;
+            }
+            // 已安装检测缓存: 每个插件名只扫描一次本地插件目录
+            var inst = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            int shown = 0;
+            for (int i = 0; i < matches.Count && shown < shownLimit; i++)
+            {
+                AddRow(matches[i], Installed(matches[i].Name, inst));
+                shown++;
+            }
+            if (matches.Count > shown)
+            {
+                // 加载更多: 每次追加 100 条
+                var wrap = new Panel { BackColor = Color.Transparent };
+                var moreBtn = MakeBtn("↓ " + Lang.T("加载更多") + " (" + (matches.Count - shown) + ")", P(170), P(34), false);
+                moreBtn.Location = new Point(P(2), 0);
+                moreBtn.Click += delegate { shownLimit += 100; Render(); };
+                wrap.Controls.Add(moreBtn);
+                list.Add(wrap, P(44));
             }
         }
 
-        void AddRow(StoreItem it)
+        bool Installed(string name, Dictionary<string, bool> cache)
+        {
+            bool v;
+            if (cache.TryGetValue(name, out v)) return v;
+            try { v = owner.IsPluginInstalled(name); } catch { v = false; }
+            cache[name] = v;
+            return v;
+        }
+
+        void AddRow(StoreItem it, bool installed)
         {
             var row = new RoundPanel { BorderColor = DshTheme.BorderSoft };
             var nameLbl = new Label
@@ -5672,11 +6010,12 @@ namespace DeepSeekHarness
                 BackColor = Color.Transparent,
                 Font = DshFonts.MonoSmall
             };
-            // 行内两个统一宽度按钮: 浏览(跳转仓库页) / 安装
+            // 行内两个统一宽度按钮: 浏览(跳转仓库页) / 安装 (已安装则置灰显示状态)
             var webBtn = MakeBtn("↗ " + Lang.T("浏览"), P(84), P(28), false);
-            var installBtn = MakeBtn("↓ " + Lang.T("安装"), P(84), P(28), true);
+            var installBtn = MakeBtn(installed ? "✓ " + Lang.T("已安装") : "↓ " + Lang.T("安装"), P(84), P(28), !installed);
+            installBtn.Enabled = !installed;
             webBtn.Click += delegate { try { Process.Start(it.Url); } catch { } };
-            installBtn.Click += delegate { owner.InstallFromStore(it); };
+            if (!installed) installBtn.Click += delegate { owner.InstallFromStore(it); };
             row.Controls.Add(nameLbl);
             row.Controls.Add(starLbl);
             row.Controls.Add(descLbl);
@@ -5694,7 +6033,17 @@ namespace DeepSeekHarness
 
         void FetchList(bool silent)
         {
-            if (loading) { pending = true; return; }   // 手动点击不丢失: 当前完成后自动再拉一次
+            if (loading)
+            {
+                // 正在刷新时再点「获取列表」: 立即给反馈, 完成后自动补一次
+                pending = true;
+                if (!silent)
+                {
+                    note.Text = Lang.T("正在获取插件列表…");
+                    note.ForeColor = DshTheme.TextDim;
+                }
+                return;
+            }
             loading = true;
             if (!silent)
             {
@@ -5723,6 +6072,7 @@ namespace DeepSeekHarness
                         if (!(gotIsMd && curIsApi))
                         {
                             items = got;
+                            shownLimit = 80;
                             StoreCache.SaveList(got);
                             WarmList = got;
                         }
