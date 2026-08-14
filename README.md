@@ -25,6 +25,8 @@
 
 ## Why this launcher
 
+> 🧪 **WPF 重构版进行中**：GPU 渲染 + 原生动画的下一代版本见 [`wpf/`](./wpf/README.md)（源码已入库，功能与 v1.5.0 等价）。
+
 Setting up dsh normally means installing Node.js, running npm commands, dealing with registries; updating means digging out commands; plugins mean manual `git pull`. **Too much hassle.**
 
 This launcher packs all of it into **one exe**:
