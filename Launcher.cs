@@ -20,6 +20,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Timer = System.Windows.Forms.Timer;
 
@@ -554,14 +555,26 @@ namespace DeepSeekHarness
     // ---------- 商城条目 ----------
     class StoreItem
     {
-        public string Name = "";
-        public string FullName = "";
-        public string Url = "";
-        public string Desc = "";
-        public int Stars;
-        public string Lang = "";
-        public string Branch = "";   // 默认分支 (GitHub API 提供; 精选列表兜底时为空)
-        public string Pushed = "";   // 最近推送日期 YYYY-MM-DD (GitHub API 提供)
+        public string Name { get; set; }
+        public string FullName { get; set; }
+        public string Url { get; set; }
+        public string Desc { get; set; }
+        public int Stars { get; set; }
+        public string Lang { get; set; }
+        public string Branch { get; set; }   // 默认分支 (GitHub API 提供; 精选列表兜底时为空)
+        public string Pushed { get; set; }   // 最近推送日期 YYYY-MM-DD (GitHub API 提供)
+
+        public StoreItem()
+        {
+            Name = "";
+            FullName = "";
+            Url = "";
+            Desc = "";
+            Stars = -1;
+            Lang = "";
+            Branch = "";
+            Pushed = "";
+        }
     }
 
     // ---------- 矢量图标 (GDI 绘制, 无需图片资源) ----------
@@ -1270,7 +1283,12 @@ namespace DeepSeekHarness
 
         void NotifySlim()
         {
-            if (HideNativeScroll && SlimChanged != null) SlimChanged();
+            if (HideNativeScroll)
+            {
+                // WinForms 在 AutoScroll 状态变化时会重建原生滚动条, 这里每次变化后都再次隐藏, 防止双滚动条
+                try { if (IsHandleCreated) Program.ShowScrollBar(Handle, 1, false); } catch { }
+                if (SlimChanged != null) SlimChanged();
+            }
         }
     }
 
@@ -2626,104 +2644,57 @@ namespace DeepSeekHarness
             return s;
         }
 
+        // GitHub 官方 REST API 返回的 JSON 用 .NET 内置序列化器解析 (System.Web.Extensions),
+        // 转义/Unicode/类型转换全部由框架处理, 不再手工逐字符解析
         public static List<StoreItem> ParseStoreJson(string json)
         {
             var list = new List<StoreItem>();
             if (string.IsNullOrEmpty(json)) return list;
             try
             {
-                int arr = json.IndexOf("\"items\"");
-                if (arr < 0) return list;
-                int start = json.IndexOf('[', arr);
-                if (start < 0) return list;
-                int depth = 0;
-                int objStart = -1;
-                bool inStr = false;
-                bool esc = false;
-                for (int i = start; i < json.Length; i++)
+                var ser = new JavaScriptSerializer();
+                var root = ser.DeserializeObject(json) as Dictionary<string, object>;
+                if (root == null) return list;
+                var items = root["items"] as object[];
+                if (items == null) return list;
+                foreach (object o in items)
                 {
-                    char c = json[i];
-                    if (inStr)
-                    {
-                        if (esc) esc = false;
-                        else if (c == '\\') esc = true;
-                        else if (c == '"') inStr = false;
-                        continue;
-                    }
-                    if (c == '"') { inStr = true; continue; }
-                    if (c == '{')
-                    {
-                        depth++;
-                        if (depth == 2) objStart = i;
-                    }
-                    else if (c == '}')
-                    {
-                        depth--;
-                        if (depth == 1 && objStart >= 0)
-                        {
-                            var it = ParseStoreItem(json.Substring(objStart, i - objStart + 1));
-                            if (it != null) list.Add(it);
-                            objStart = -1;
-                        }
-                    }
-                    else if (c == ']' && depth == 1) break;
+                    var d = o as Dictionary<string, object>;
+                    if (d == null) continue;
+                    var it = new StoreItem();
+                    it.FullName = JStr(d, "full_name");
+                    it.Url = JStr(d, "html_url");
+                    it.Desc = JStr(d, "description");
+                    it.Lang = JStr(d, "language");
+                    it.Branch = JStr(d, "default_branch");
+                    it.Pushed = JStr(d, "pushed_at");
+                    if (it.Pushed.Length >= 10) it.Pushed = it.Pushed.Substring(0, 10);
+                    it.Stars = JInt(d, "stargazers_count");
+                    if (string.IsNullOrEmpty(it.FullName)) continue;
+                    int slash = it.FullName.IndexOf('/');
+                    it.Name = slash >= 0 ? it.FullName.Substring(slash + 1) : it.FullName;
+                    list.Add(it);
                 }
             }
             catch { }
             return list;
         }
 
-        public static StoreItem ParseStoreItem(string obj)
+        static string JStr(Dictionary<string, object> d, string key)
         {
-            try
-            {
-                var it = new StoreItem();
-                it.FullName = JsStr(obj, "\"full_name\"");
-                it.Url = JsStr(obj, "\"html_url\"");
-                it.Desc = JsStr(obj, "\"description\"");
-                it.Lang = JsStr(obj, "\"language\"");
-                it.Branch = JsStr(obj, "\"default_branch\"");
-                string pushed = JsStr(obj, "\"pushed_at\"");
-                if (pushed.Length >= 10) it.Pushed = pushed.Substring(0, 10);
-                Match m = Regex.Match(obj, "\"stargazers_count\"\\s*:\\s*(\\d+)");
-                if (m.Success) int.TryParse(m.Groups[1].Value, out it.Stars);
-                if (string.IsNullOrEmpty(it.FullName)) return null;
-                int slash = it.FullName.IndexOf('/');
-                it.Name = slash >= 0 ? it.FullName.Substring(slash + 1) : it.FullName;
-                return it;
-            }
-            catch { return null; }
+            object v;
+            return (d.TryGetValue(key, out v) && v != null) ? Convert.ToString(v) : "";
         }
 
-        public static string JsStr(string obj, string key)
+        static int JInt(Dictionary<string, object> d, string key)
         {
-            int k = obj.IndexOf(key);
-            if (k < 0) return "";
-            int colon = obj.IndexOf(':', k);
-            if (colon < 0) return "";
-            int i = colon + 1;
-            while (i < obj.Length && (obj[i] == ' ' || obj[i] == '\t')) i++;
-            if (i < obj.Length && obj[i] == '"')
+            object v;
+            if (d.TryGetValue(key, out v) && v != null)
             {
-                var sb = new StringBuilder();
-                for (int j = i + 1; j < obj.Length; j++)
-                {
-                    char c = obj[j];
-                    if (c == '\\' && j + 1 < obj.Length)
-                    {
-                        char n = obj[j + 1];
-                        if (n == 'n') { sb.Append('\n'); j++; }
-                        else if (n == '"') { sb.Append('"'); j++; }
-                        else if (n == '\\') { sb.Append('\\'); j++; }
-                        else sb.Append(c);
-                    }
-                    else if (c == '"') break;
-                    else sb.Append(c);
-                }
-                return sb.ToString();
+                int n;
+                if (int.TryParse(Convert.ToString(v), out n)) return n;
             }
-            if (i < obj.Length && obj[i] == 'n') return "";
-            return "";
+            return -1;
         }
 
         public void InstallFromStore(StoreItem it)
@@ -5230,23 +5201,14 @@ namespace DeepSeekHarness
             return d;
         }
 
+        // 缓存用 .NET 内置 JSON 序列化器读写 (System.Web.Extensions), 不再手工拼接/正则解析
         public static void SaveList(List<StoreItem> items)
         {
             try
             {
-                var sb = new StringBuilder();
-                sb.Append("{\"t\":").Append(DateTime.UtcNow.Ticks).Append(",\"items\":[");
-                for (int i = 0; i < items.Count; i++)
-                {
-                    var it = items[i];
-                    if (i > 0) sb.Append(',');
-                    sb.Append("{\"f\":\"").Append(J(it.FullName)).Append("\",\"n\":\"").Append(J(it.Name))
-                      .Append("\",\"u\":\"").Append(J(it.Url)).Append("\",\"d\":\"").Append(J(it.Desc))
-                      .Append("\",\"s\":").Append(it.Stars).Append(",\"l\":\"").Append(J(it.Lang))
-                      .Append("\",\"b\":\"").Append(J(it.Branch)).Append("\",\"p\":\"").Append(J(it.Pushed)).Append("\"}");
-                }
-                sb.Append("]}");
-                File.WriteAllText(Path.Combine(Dir(), "store.json"), sb.ToString(), Encoding.UTF8);
+                var ser = new JavaScriptSerializer();
+                string json = ser.Serialize(new { t = DateTime.UtcNow.Ticks, items = items });
+                File.WriteAllText(Path.Combine(Dir(), "store.json"), json, Encoding.UTF8);
                 Program.DLog("store", "cache saved " + items.Count + " items");
             }
             catch { }
@@ -5261,26 +5223,20 @@ namespace DeepSeekHarness
                 string f = Path.Combine(Dir(), "store.json");
                 if (!File.Exists(f)) return null;
                 string json = File.ReadAllText(f, Encoding.UTF8);
-                Match tm = Regex.Match(json, "\"t\":(\\d+)");
+                var ser = new JavaScriptSerializer();
+                var root = ser.DeserializeObject(json) as Dictionary<string, object>;
+                if (root == null) return null;
+                object tObj;
                 long ticks;
-                if (tm.Success && long.TryParse(tm.Groups[1].Value, out ticks))
+                if (root.TryGetValue("t", out tObj) && long.TryParse(Convert.ToString(tObj), out ticks))
                     ageSec = Math.Max(0, (DateTime.UtcNow.Ticks - ticks) / TimeSpan.TicksPerSecond);
+                var arr = root["items"] as object[];
+                if (arr == null) return null;
                 var list = new List<StoreItem>();
-                foreach (Match m in Regex.Matches(json, "\\{\"f\":\"(.*?)\",\"n\":\"(.*?)\",\"u\":\"(.*?)\",\"d\":\"(.*?)\",\"s\":(-?\\d+),\"l\":\"(.*?)\",\"b\":\"(.*?)\"(?:,\"p\":\"(.*?)\")?\\}"))
+                foreach (object o in arr)
                 {
-                    var it = new StoreItem
-                    {
-                        FullName = UJ(m.Groups[1].Value),
-                        Name = UJ(m.Groups[2].Value),
-                        Url = UJ(m.Groups[3].Value),
-                        Desc = UJ(m.Groups[4].Value),
-                        Lang = UJ(m.Groups[6].Value),
-                        Branch = UJ(m.Groups[7].Value),
-                        Pushed = UJ(m.Groups[8].Value),
-                        Stars = -1
-                    };
-                    int.TryParse(m.Groups[5].Value, out it.Stars);
-                    list.Add(it);
+                    var it = ser.ConvertToType<StoreItem>(o);
+                    if (it != null && !string.IsNullOrEmpty(it.FullName)) list.Add(it);
                 }
                 return list.Count > 0 ? list : null;
             }
@@ -5288,14 +5244,6 @@ namespace DeepSeekHarness
         }
 
         public static int ListTtl() { return ListTtlSec; }
-
-        // 缓存为机器可读格式: 引号替换为单引号, 换行折叠, 保证 Regex 可解析
-        static string J(string s)
-        {
-            return (s ?? "").Replace('"', '\'').Replace("\r", " ").Replace("\n", " ").Replace("\\", "/");
-        }
-
-        static string UJ(string s) { return s ?? ""; }
     }
 
     // ============ 现代输入框 (圆角深色 + 占位提示 + 聚焦蓝色描边, 纯自绘零依赖) ============
