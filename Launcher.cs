@@ -1314,7 +1314,7 @@ namespace DeepSeekHarness
     // ---------- 主窗口 ----------
     class LauncherForm : Form
     {
-        const string LauncherVersion = "1.4.0";
+        const string LauncherVersion = "1.4.1";
 
         LauncherConfig cfg;
         Process serverProc;
@@ -1342,7 +1342,8 @@ namespace DeepSeekHarness
         // 概览页
         RoundPanel heroCard;
         StatusDot ovDot;
-        EllipsisLabel ovStatusTitle, ovStatusSub, ovInfo;
+        EllipsisLabel ovStatusTitle, ovStatusSub;
+        Label ovInfo;
         ModernButton ovPrimary, ovSecondary, ovTertiary;
         TextBox ovLog;
 
@@ -1374,7 +1375,6 @@ namespace DeepSeekHarness
         // 设置页
         TextBox setCmd, setPort, setHome, setPlugins, setLog, setNpm, setLupUrl;
         ComboBox setLang;
-        CheckBox setCheckUpdate, setAutoStart, setRestart, setOpenBrowser;
         ModernButton setDetect, setSave, setOpenCfg;
 
         // 托盘与定时器
@@ -1864,9 +1864,10 @@ namespace DeepSeekHarness
 
             // 状态信息条 (单行, 超出省略号)
             var strip = new RoundPanel();
-            ovInfo = new EllipsisLabel
+            ovInfo = new Label
             {
                 Dock = DockStyle.Fill,
+                AutoSize = false,
                 ForeColor = DshTheme.TextDim,
                 BackColor = Color.Transparent,
                 Font = DshFonts.Mono,
@@ -1888,7 +1889,7 @@ namespace DeepSeekHarness
             log.Controls.Add(head);
 
             AddRow(stack, heroCard, SizeType.Absolute, Px(148));
-            AddRow(stack, strip, SizeType.Absolute, Px(40));
+            AddRow(stack, strip, SizeType.Absolute, Px(56));
             AddRow(stack, log, SizeType.Percent, 100);
             page.Controls.Add(stack);
             return page;
@@ -2102,11 +2103,11 @@ namespace DeepSeekHarness
             AddRow(stack, MakeSection(Lang.T("设置")), SizeType.Absolute, Px(32));
 
             var card = new RoundPanel();
-            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(Px(14)), ColumnCount = 2, RowCount = 13, BackColor = Color.Transparent };
+            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(Px(14)), ColumnCount = 2, RowCount = 9, BackColor = Color.Transparent };
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Px(124)));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            for (int i = 0; i < 13; i++)
-                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Px(i < 7 ? 34 : (i < 12 ? 30 : 44))));
+            for (int i = 0; i < 9; i++)
+                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Px(i < 8 ? 38 : 48)));
 
             setCmd = NewSettingBox(grid, 0, 6, Lang.T("dsh 命令"), cfg.DshCommand);
             setPort = NewSettingBox(grid, 1, 7, Lang.T("服务端口"), cfg.Port.ToString());
@@ -2141,17 +2142,12 @@ namespace DeepSeekHarness
             grid.Controls.Add(langCell, 0, 7);
             grid.Controls.Add(setLang, 1, 7);
 
-            setCheckUpdate = NewSettingCheck(grid, 8, Lang.T("启动时自动检查更新"), cfg.CheckUpdatesOnStart);
-            setAutoStart = NewSettingCheck(grid, 9, Lang.T("启动时自动启动服务"), cfg.AutoStartService);
-            setRestart = NewSettingCheck(grid, 10, Lang.T("启动时自动重启旧服务"), cfg.RestartIfRunning);
-            setOpenBrowser = NewSettingCheck(grid, 11, Lang.T("启动成功后自动打开浏览器"), cfg.OpenBrowserOnStart);
-
             var btnCell = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Color.Transparent, Margin = Padding.Empty, Padding = new Padding(0, Px(4), 0, 0) };
             setDetect = MakeBtn(Lang.T("自动检测"), Px(88), Px(36), false); setDetect.Margin = new Padding(0, 0, Px(10), 0); setDetect.Click += delegate { RunDetect(); };
             setSave = MakeBtn(Lang.T("保存设置"), Px(88), Px(36), true); setSave.Margin = new Padding(0, 0, Px(10), 0); setSave.Click += delegate { SaveSettings(); };
             setOpenCfg = MakeBtn(Lang.T("打开配置文件"), Px(100), Px(36), false); setOpenCfg.Margin = Padding.Empty; setOpenCfg.Click += delegate { OpenConfigFile(); };
             btnCell.Controls.AddRange(new Control[] { setDetect, setSave, setOpenCfg });
-            grid.Controls.Add(btnCell, 1, 12);
+            grid.Controls.Add(btnCell, 1, 8);
 
             card.Controls.Add(grid);
 
@@ -2395,7 +2391,7 @@ namespace DeepSeekHarness
                 dshOk ? "✓" : "✗");
             string updLine;
             if (currentUpdate.HasUpdate) updLine = "有更新：" + currentUpdate.Detail;
-            else if (!string.IsNullOrEmpty(currentUpdate.DshLatest)) updLine = "已是最新 (v" + currentUpdate.DshLatest + ")";
+            else if (!string.IsNullOrEmpty(currentUpdate.DshLatest)) updLine = "已是最新";
             else updLine = "更新未检查";
 
             if (!envDetected)
@@ -3801,14 +3797,11 @@ namespace DeepSeekHarness
             cfg.PluginsRoot = setPlugins.Text.Trim();
             cfg.LogDir = setLog.Text.Trim();
             cfg.NpmPackage = setNpm.Text.Trim();
-            cfg.CheckUpdatesOnStart = setCheckUpdate.Checked;
-            cfg.AutoStartService = setAutoStart.Checked;
-            cfg.RestartIfRunning = setRestart.Checked;
-            cfg.OpenBrowserOnStart = setOpenBrowser.Checked;
             cfg.LauncherUpdateUrl = setLupUrl.Text.Trim();
             string newLang = (setLang.SelectedIndex == 1) ? "zh" : (setLang.SelectedIndex == 2 ? "en" : "");
             bool langChanged = (Lang.Code != Lang.Resolve(newLang));
             cfg.Language = newLang;
+            // 自动检查更新 / 自动启动服务 / 自动打开浏览器 / 自动重启旧服务 均为内置默认行为
             cfg.ApplyDefaults();
             cfg.Save();
 
