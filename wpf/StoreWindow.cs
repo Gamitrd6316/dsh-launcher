@@ -202,26 +202,42 @@ namespace DeepSeekHarness
 
             // 工具栏
             var toolbar = new WrapPanel { Margin = new Thickness(14, 10, 14, 0) };
+            var searchBox = new Grid { Width = 220, Height = 34, Margin = new Thickness(0, 0, 8, 0) };
             search = new System.Windows.Controls.TextBox
             {
-                Width = 220, Height = 34, FontSize = 13,
+                FontSize = 13,
                 Background = Palette.Brush(Palette.BgInput), Foreground = Palette.Brush(Palette.Text),
                 BorderThickness = new Thickness(0), Padding = new Thickness(10, 0, 10, 0),
-                VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0)
+                VerticalContentAlignment = VerticalAlignment.Center
             };
-            search.TextChanged += delegate { shownLimit = 80; Render(); };
+            var searchHint = new TextBlock
+            {
+                Text = Lang.T("搜索插件…"),
+                Foreground = Palette.Brush(Palette.TextFaint),
+                FontSize = 13,
+                Margin = new Thickness(10, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+            searchBox.Children.Add(search);
+            searchBox.Children.Add(searchHint);
+            Action updateHint = delegate { searchHint.Visibility = (search.Text.Length == 0 && !search.IsKeyboardFocused) ? Visibility.Visible : Visibility.Collapsed; };
+            search.TextChanged += delegate { updateHint(); shownLimit = 80; Render(); };
+            search.GotKeyboardFocus += delegate { updateHint(); };
+            search.LostKeyboardFocus += delegate { updateHint(); };
+            updateHint();
+            toolbar.Children.Add(searchBox);
             sortDd = new ModernDropdown { Width = 150, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            sortDd.SetItems(new string[] { "★ 按星标排序", "按名称排序", "默认顺序" }, 0);
+            sortDd.SetItems(new string[] { "★ " + Lang.T("按星标排序"), Lang.T("按名称排序"), Lang.T("默认顺序") }, 0);
             sortDd.SelectionChanged += delegate { shownLimit = 80; Render(); };
             langDd = new ModernDropdown { Width = 120, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            langDd.SetItems(new string[] { "全部语言" }, 0);
+            langDd.SetItems(new string[] { Lang.T("全部语言") }, 0);
             langDd.SelectionChanged += delegate { shownLimit = 80; Render(); };
-            fetchBtn = Btn("↻ 获取列表", delegate { Refresh(); });
+            fetchBtn = Btn("↻ " + Lang.T("获取列表"), delegate { Refresh(); });
             fetchBtn.Margin = new Thickness(0, 0, 8, 0);
-            var webBtn = Btn("打开网页", delegate { try { Process.Start("https://github.com/topics/dsh-plugin"); } catch { } });
+            var webBtn = Btn(Lang.T("打开网页"), delegate { try { Process.Start("https://github.com/topics/dsh-plugin"); } catch { } });
             webBtn.Margin = new Thickness(0, 0, 8, 0);
             note = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
-            toolbar.Children.Add(search);
             toolbar.Children.Add(sortDd);
             toolbar.Children.Add(langDd);
             toolbar.Children.Add(fetchBtn);
@@ -392,6 +408,8 @@ namespace DeepSeekHarness
                 Padding = new Thickness(14, 10, 14, 10),
                 Margin = new Thickness(0, 0, 0, 8)
             };
+            row.MouseEnter += delegate { row.Background = Palette.Brush(Palette.BgInput); };
+            row.MouseLeave += delegate { row.Background = Palette.Brush(Palette.BgCard); };
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
