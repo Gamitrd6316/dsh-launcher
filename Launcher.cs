@@ -1338,7 +1338,7 @@ namespace DeepSeekHarness
     // ---------- 主窗口 ----------
     class LauncherForm : Form
     {
-        const string LauncherVersion = "1.4.2";
+        const string LauncherVersion = "1.4.3";
 
         LauncherConfig cfg;
         Process serverProc;
@@ -1539,20 +1539,27 @@ namespace DeepSeekHarness
             };
 
             var minBtn = MakeTitleBtn("─");
+            var maxBtn = MakeTitleBtn("▢");
             var closeBtn = MakeTitleBtn("✕");
             minBtn.Dock = DockStyle.Right;
+            maxBtn.Dock = DockStyle.Right;
             closeBtn.Dock = DockStyle.Right;
-            minBtn.Width = Px(46); closeBtn.Width = Px(46);
+            minBtn.Width = Px(46); maxBtn.Width = Px(46); closeBtn.Width = Px(46);
             minBtn.MouseEnter += delegate { minBtn.BackColor = DshTheme.BtnHover; minBtn.ForeColor = Color.White; };
             minBtn.MouseLeave += delegate { minBtn.BackColor = Color.Transparent; minBtn.ForeColor = DshTheme.TextDim; };
+            maxBtn.MouseEnter += delegate { maxBtn.BackColor = DshTheme.BtnHover; maxBtn.ForeColor = Color.White; };
+            maxBtn.MouseLeave += delegate { maxBtn.BackColor = Color.Transparent; maxBtn.ForeColor = DshTheme.TextDim; };
             closeBtn.MouseEnter += delegate { closeBtn.BackColor = Color.FromArgb(255, 210, 70, 70); closeBtn.ForeColor = Color.White; };
             closeBtn.MouseLeave += delegate { closeBtn.BackColor = Color.Transparent; closeBtn.ForeColor = DshTheme.TextDim; };
             minBtn.Click += delegate { WindowState = FormWindowState.Minimized; };
+            maxBtn.Click += delegate { ToggleMaximize(); };
             closeBtn.Click += delegate { HideToTray(); };
+            Resize += delegate { maxBtn.Text = (WindowState == FormWindowState.Maximized) ? "❐" : "▢"; };
 
             titleBar.Controls.Add(titleTxt);
             titleBar.Controls.Add(titleLogo);
             titleBar.Controls.Add(minBtn);
+            titleBar.Controls.Add(maxBtn);
             titleBar.Controls.Add(closeBtn);
             titleTxt.BringToFront();
             titleLogo.BringToFront();
@@ -1566,8 +1573,36 @@ namespace DeepSeekHarness
                 if (dragging) Location = new Point(Location.X + e.X - dragStart.X, Location.Y + e.Y - dragStart.Y);
             };
             titleBar.MouseUp += delegate { dragging = false; };
+            titleBar.DoubleClick += delegate { ToggleMaximize(); };
 
             Controls.Add(titleBar);
+        }
+
+        void ToggleMaximize()
+        {
+            WindowState = (WindowState == FormWindowState.Maximized) ? FormWindowState.Normal : FormWindowState.Maximized;
+        }
+
+        // 无边框窗口: 边缘拖拽缩放 (WM_NCHITTEST)
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if (m.Msg == 0x84 && WindowState != FormWindowState.Maximized)
+            {
+                int x = unchecked((short)((long)m.LParam & 0xFFFF));
+                int y = unchecked((short)(((long)m.LParam >> 16) & 0xFFFF));
+                Point pt = PointToClient(new Point(x, y));
+                int b = Px(6);
+                bool top = pt.Y <= b, left = pt.X <= b, right = pt.X >= ClientSize.Width - b, bottom = pt.Y >= ClientSize.Height - b;
+                if (top && left) m.Result = (IntPtr)13;
+                else if (top && right) m.Result = (IntPtr)14;
+                else if (bottom && left) m.Result = (IntPtr)16;
+                else if (bottom && right) m.Result = (IntPtr)17;
+                else if (top) m.Result = (IntPtr)12;
+                else if (left) m.Result = (IntPtr)10;
+                else if (right) m.Result = (IntPtr)11;
+                else if (bottom) m.Result = (IntPtr)15;
+            }
         }
 
         Label MakeTitleBtn(string glyph)
@@ -1654,7 +1689,7 @@ namespace DeepSeekHarness
             var foot = new Panel { Dock = DockStyle.Bottom, Height = Px(24), BackColor = Color.Transparent };
             var verLbl = new Label
             {
-                Text = "v" + LauncherVersion,
+                Text = "v" + LauncherVersion + " · by loudMore",
                 AutoSize = true,
                 Location = new Point(Px(4), Px(5)),
                 ForeColor = DshTheme.TextFaint,
@@ -3604,14 +3639,19 @@ namespace DeepSeekHarness
                 string latest = null;
                 try
                 {
-                    string outp = RunCapture("curl.exe", "-s -m 20 \"" + cfg.LauncherUpdateUrl + "\"", 30000);
-                    if (outp != null)
+                    // 多源链式获取: 配置源 → jsDelivr CDN(国内可达)
+                    var urls = new List<string>();
+                    if (!string.IsNullOrEmpty(cfg.LauncherUpdateUrl)) urls.Add(cfg.LauncherUpdateUrl);
+                    urls.Add("https://cdn.jsdelivr.net/gh/loudMore/dsh-launcher@main/version.txt");
+                    foreach (string u in urls)
                     {
+                        string outp = RunCapture("curl.exe", "-s -L -m 25 \"" + u + "\"", 35000);
+                        if (outp == null) continue;
                         string[] lines = outp.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                         if (lines.Length > 0)
                         {
                             Match m = Regex.Match(lines[0].Trim(), "(\\d+\\.\\d+\\.\\d+)");
-                            if (m.Success) latest = m.Groups[1].Value;
+                            if (m.Success) { latest = m.Groups[1].Value; break; }
                         }
                     }
                 }
