@@ -178,7 +178,8 @@ namespace DeepSeekHarness
         public string Label;
         bool active;
         bool hover;
-        TextBlock text;
+        TextBlock icon, text;
+        Border indicator;
 
         public bool Active
         {
@@ -186,22 +187,27 @@ namespace DeepSeekHarness
             set { active = value; ApplyState(); }
         }
 
-        public NavItem(int index, string label)
+        public NavItem(int index, string iconGlyph, string label)
         {
             Index = index;
             Label = label;
             Height = 44;
             Margin = new Thickness(12, 4, 12, 4);
             CornerRadius = new CornerRadius(10);
-            text = new TextBlock
-            {
-                Text = label,
-                Foreground = Palette.Brush(Palette.TextDim),
-                FontSize = 14,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center
-            };
-            Child = text;
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });   // 左侧指示条
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });  // 图标
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            indicator = new Border { Width = 4, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+            icon = new TextBlock { Text = iconGlyph, FontSize = 15, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Foreground = Palette.Brush(Palette.TextDim) };
+            text = new TextBlock { Text = label, Foreground = Palette.Brush(Palette.TextDim), FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(indicator, 0);
+            Grid.SetColumn(icon, 1);
+            Grid.SetColumn(text, 2);
+            g.Children.Add(indicator);
+            g.Children.Add(icon);
+            g.Children.Add(text);
+            Child = g;
             MouseEnter += delegate { hover = true; ApplyState(); };
             MouseLeave += delegate { hover = false; ApplyState(); };
         }
@@ -210,18 +216,24 @@ namespace DeepSeekHarness
         {
             if (active)
             {
-                Background = Palette.Brush(Palette.Blue);
+                Background = Palette.BrushA(Palette.Blue, 46);
                 text.Foreground = Palette.Brush(Palette.Text);
+                icon.Foreground = Palette.Brush(Palette.BlueLight);
+                indicator.Visibility = Visibility.Visible;
             }
             else if (hover)
             {
                 Background = Palette.BrushA(Palette.Text, 18);
                 text.Foreground = Palette.Brush(Palette.Text);
+                icon.Foreground = Palette.Brush(Palette.TextDim);
+                indicator.Visibility = Visibility.Collapsed;
             }
             else
             {
                 Background = Brushes.Transparent;
                 text.Foreground = Palette.Brush(Palette.TextDim);
+                icon.Foreground = Palette.Brush(Palette.TextFaint);
+                indicator.Visibility = Visibility.Collapsed;
             }
         }
     }
@@ -235,12 +247,13 @@ namespace DeepSeekHarness
         TextBlock sbText, sbRight;
         Dsh dsh = new Dsh();
         TextBlock ovStatus, ovSub;
-        Button ovPrimary, ovOpenBrowser;
+        Button ovPrimary, ovStop, ovRestart;
         WrapPanel ovChips;
         TextBlock ovLog;
         ProgressBar busy;
         string lastProxy = "";
         TextBlock[] envName = new TextBlock[4], envVer = new TextBlock[4];
+        TextBlock sbDot;
 
         // 环境页
         StackPanel envRows;
@@ -312,6 +325,58 @@ namespace DeepSeekHarness
                         }
                         if (args[i] == "--store") OpenStore();
                         if (args[i] == "--selftest") Selftest();
+                        if (args[i] == "--action" && i + 1 < args.Length)
+                        {
+                            string act = args[i + 1];
+                            if (act == "start") { dsh.StartServiceAsync(); PollServiceState(); }
+                            else if (act == "stop") { dsh.StopServiceAsync(); PollServiceState(); }
+                            else if (act == "restart") { dsh.RestartServiceAsync(); PollServiceState(); }
+                            else if (act == "updatenow") RunUpdateCheck();
+                            else if (act == "install" && i + 2 < args.Length)
+                            {
+                                string url = args[i + 2];
+                                var tt = new Thread(delegate()
+                                {
+                                    string err = dsh.InstallPluginFromUrl(url);
+                                    Proc.DLog("action", "install " + url + " -> " + (err.Length == 0 ? "OK" : err));
+                                    File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "actions.log"), DateTime.Now.ToString("HH:mm:ss") + " install " + url + " -> " + (err.Length == 0 ? "OK" : err) + "\r\n");
+                                });
+                                tt.IsBackground = true;
+                                tt.Start();
+                                i += 2;
+                            }
+                            else if (act == "toggle" && i + 2 < args.Length)
+                            {
+                                string name = args[i + 2];
+                                var plugins = dsh.ScanPlugins();
+                                foreach (var pp in plugins)
+                                {
+                                    if (string.Equals(pp.Name, name, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        string err = dsh.TogglePlugin(pp);
+                                        Proc.DLog("action", "toggle " + name + " -> " + (err.Length == 0 ? "OK" : err));
+                                        break;
+                                    }
+                                }
+                                i += 2;
+                            }
+                            else if (act == "uninstall" && i + 2 < args.Length)
+                            {
+                                string name = args[i + 2];
+                                var plugins = dsh.ScanPlugins();
+                                foreach (var pp in plugins)
+                                {
+                                    if (string.Equals(pp.Name, name, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        string err = dsh.UninstallPlugin(pp);
+                                        Proc.DLog("action", "uninstall " + name + " -> " + (err.Length == 0 ? "OK" : err));
+                                        break;
+                                    }
+                                }
+                                i += 2;
+                            }
+                            else i++;
+                        }
                     }
                 }
                 catch (Exception ex) { Proc.DLog("test", "hook err " + ex); }
@@ -450,10 +515,11 @@ namespace DeepSeekHarness
 
             var navHost = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
             string[] names = { Lang.T("概览"), Lang.T("环境"), Lang.T("插件"), Lang.T("更新"), Lang.T("日志"), Lang.T("设置") };
+            string[] icons = { "🏠", "🎚", "📦", "🔄", "📄", "⚙" };
             for (int i = 0; i < names.Length; i++)
             {
                 int idx = i;
-                var nav = new NavItem(i, names[i]);
+                var nav = new NavItem(i, icons[i], names[i]);
                 nav.MouseLeftButtonUp += delegate { SwitchPage(idx); };
                 navs.Add(nav);
                 navHost.Children.Add(nav);
@@ -511,12 +577,19 @@ namespace DeepSeekHarness
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
 
+            sbDot = new TextBlock
+            {
+                Text = "●",
+                Foreground = Palette.Brush(Palette.TextDim),
+                FontSize = 11,
+                Margin = new Thickness(14, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
             sbText = new TextBlock
             {
                 Text = Lang.T("准备就绪"),
                 Foreground = Palette.Brush(Palette.TextDim),
                 FontSize = 12,
-                Margin = new Thickness(14, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
             sbRight = new TextBlock
@@ -528,8 +601,8 @@ namespace DeepSeekHarness
                 Margin = new Thickness(0, 0, 14, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            sbRight.Text = "端口 8099 · 启动器 v1.5.0 (WPF)";
             Grid.SetColumn(sbRight, 1);
+            bar.Children.Add(sbDot);
             bar.Children.Add(sbText);
             bar.Children.Add(sbRight);
             return bar;
@@ -552,11 +625,14 @@ namespace DeepSeekHarness
 
             var stack = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
 
-            // 状态主卡
-            var hero = new Border { Background = Palette.Brush(Palette.BgCard), CornerRadius = new CornerRadius(14), Padding = new Thickness(20, 16, 20, 16) };
+            // 状态主卡 (旧版布局: 状态在左, 按钮组在右, 芯片在卡片底部)
+            var hero = new Border { Background = Palette.Brush(Palette.BgCard), CornerRadius = new CornerRadius(14), Padding = new Thickness(20, 16, 20, 14) };
             var heroGrid = new Grid();
-            heroGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            heroGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 弹性: 按钮组自适应, 不挤压
+            heroGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heroGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var heroTop = new Grid();
+            heroTop.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            heroTop.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 弹性: 按钮组自适应, 不挤压
             var statusCol = new StackPanel();
             ovStatus = new TextBlock { Text = "● " + Lang.T("检测中…"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 22, FontWeight = FontWeights.SemiBold };
             ovSub = new TextBlock { Text = Lang.T("正在检测环境与服务状态…"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 13, Margin = new Thickness(0, 6, 0, 0) };
@@ -576,11 +652,10 @@ namespace DeepSeekHarness
             };
             ovPrimary.MouseEnter += delegate { ovPrimary.Background = Palette.Brush(Palette.BlueLight); };
             ovPrimary.MouseLeave += delegate { ovPrimary.Background = Palette.Brush(Palette.Blue); };
-            ovPrimary.Click += delegate { ToggleService(); };
-            Grid.SetColumn(ovPrimary, 1);
-            ovOpenBrowser = new Button
+            ovPrimary.Click += delegate { PrimaryAction(); };
+            ovStop = new Button
             {
-                Content = "打开浏览器",
+                Content = Lang.T("停止服务"),
                 Height = 38,
                 FontSize = 15,
                 FontWeight = FontWeights.SemiBold,
@@ -592,21 +667,41 @@ namespace DeepSeekHarness
                 Margin = new Thickness(0, 0, 10, 0),
                 Visibility = Visibility.Collapsed
             };
-            ovOpenBrowser.MouseEnter += delegate { ovOpenBrowser.Background = Palette.Brush(Palette.BlueLight); };
-            ovOpenBrowser.MouseLeave += delegate { ovOpenBrowser.Background = Palette.Brush(Palette.BgInput); };
-            ovOpenBrowser.Click += delegate { dsh.OpenBrowser(); };
+            ovStop.MouseEnter += delegate { ovStop.Background = Palette.Brush(Palette.TextDim); };
+            ovStop.MouseLeave += delegate { ovStop.Background = Palette.Brush(Palette.BgInput); };
+            ovStop.Click += delegate { dsh.StopServiceAsync(); };
+            ovRestart = new Button
+            {
+                Content = Lang.T("重启服务"),
+                Height = 38,
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                Background = Palette.Brush(Palette.BgInput),
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0),
+                Visibility = Visibility.Collapsed
+            };
+            ovRestart.MouseEnter += delegate { ovRestart.Background = Palette.Brush(Palette.TextDim); };
+            ovRestart.MouseLeave += delegate { ovRestart.Background = Palette.Brush(Palette.BgInput); };
+            ovRestart.Click += delegate { RestartService(); };
             var heroBtns = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
-            heroBtns.Children.Add(ovOpenBrowser);
+            heroBtns.Children.Add(ovStop);
+            heroBtns.Children.Add(ovRestart);
             heroBtns.Children.Add(ovPrimary);
             Grid.SetColumn(heroBtns, 1);
-            heroGrid.Children.Add(statusCol);
-            heroGrid.Children.Add(heroBtns);
+            heroTop.Children.Add(statusCol);
+            heroTop.Children.Add(heroBtns);
+            Grid.SetRow(heroTop, 0);
+            heroGrid.Children.Add(heroTop);
+            // 芯片行 (卡片底部)
+            ovChips = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+            Grid.SetRow(ovChips, 1);
+            heroGrid.Children.Add(ovChips);
             hero.Child = heroGrid;
             stack.Children.Add(hero);
-
-            // 状态芯片
-            ovChips = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-            stack.Children.Add(ovChips);
 
             // 运行环境卡
             var envCard = new Border { Background = Palette.Brush(Palette.BgCard), CornerRadius = new CornerRadius(14), Padding = new Thickness(20, 14, 20, 14), Margin = new Thickness(0, 14, 0, 0) };
@@ -629,12 +724,20 @@ namespace DeepSeekHarness
             envCard.Child = envStack;
             stack.Children.Add(envCard);
 
-            // 最近日志预览
+            // 最近日志 (控制台式: 标题 + 提示 + 等宽日志区)
             var logCard = new Border { Background = Palette.Brush(Palette.BgCard), CornerRadius = new CornerRadius(14), Padding = new Thickness(20, 14, 20, 14), Margin = new Thickness(0, 14, 0, 0) };
             var logStack = new StackPanel();
-            logStack.Children.Add(new TextBlock { Text = Lang.T("最近日志"), Foreground = Palette.Brush(Palette.Text), FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
-            ovLog = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.NoWrap, MaxHeight = 120 };
-            logStack.Children.Add(ovLog);
+            var logHead = new Grid();
+            logHead.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            logHead.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            logHead.Children.Add(new TextBlock { Text = Lang.T("最近日志") + " (launcher.log)", Foreground = Palette.Brush(Palette.Text), FontSize = 15, FontWeight = FontWeights.SemiBold });
+            logHead.Children.Add(new TextBlock { Text = Lang.T("滚轮滚动 · 完整日志在「日志」页"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetColumn(logHead.Children[1] as UIElement, 1);
+            logStack.Children.Add(logHead);
+            var console = new Border { Background = Palette.Brush(Palette.BgInput), CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 8, 0, 0) };
+            ovLog = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextDim), FontSize = 11, FontFamily = new FontFamily("Consolas"), TextWrapping = TextWrapping.NoWrap, MaxHeight = 150 };
+            console.Child = ovLog;
+            logStack.Children.Add(console);
             logCard.Child = logStack;
             stack.Children.Add(logCard);
 
@@ -698,9 +801,18 @@ namespace DeepSeekHarness
                         }));
                     }
                 }
+                // 启动时自动启动服务 (与旧版一致, 按配置)
+                if (dsh.Cfg.AutoStartService && !Dsh.IsPortOpen(dsh.Cfg.Port))
+                {
+                    try { dsh.StartServiceAsync(); } catch { }
+                }
             });
             t.IsBackground = true;
             t.Start();
+            // 每 3 小时静默检查更新
+            var updTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(3) };
+            updTimer.Tick += delegate { RunUpdateCheck(); };
+            updTimer.Start();
         }
 
         void RenderOverview()
@@ -720,8 +832,8 @@ namespace DeepSeekHarness
             {
                 ovStatus.Text = "● " + Lang.T("服务运行中");
                 ovStatus.Foreground = Palette.Brush(Palette.Success);
-                ovSub.Text = string.Format("http://127.0.0.1:{0}", dsh.Cfg.Port);
-                ovPrimary.Content = Lang.T("停止服务");
+                ovSub.Text = string.Format("http://127.0.0.1:{0} · dsh {1}", dsh.Cfg.Port, string.IsNullOrEmpty(env.DshVersion) ? "-" : env.DshVersion);
+                ovPrimary.Content = "▶ " + Lang.T("打开浏览器");
             }
             else
             {
@@ -737,40 +849,68 @@ namespace DeepSeekHarness
                 if (string.IsNullOrEmpty(paths[i]))
                     envVer[i].Text = Lang.T("未检测到");
                 else
+                {
                     envVer[i].Text = (string.IsNullOrEmpty(vers[i]) ? "" : vers[i] + "  ·  ") + paths[i];
+                    envVer[i].ToolTip = paths[i];
+                }
                 envVer[i].Foreground = Palette.Brush(string.IsNullOrEmpty(paths[i]) ? Palette.Warn : Palette.TextFaint);
             }
-            // 状态芯片
+            // 状态芯片 (卡片底部, 旧版布局)
             if (ovChips != null)
             {
                 ovChips.Children.Clear();
-                ovChips.Children.Add(Chip("Node " + (nodeOk ? (string.IsNullOrEmpty(env.NodeVersion) ? "✓" : env.NodeVersion) : "✗"), nodeOk ? Palette.Success : Palette.Warn));
-                ovChips.Children.Add(Chip("dsh " + (dshOk ? (string.IsNullOrEmpty(env.DshVersion) ? "✓" : env.DshVersion) : "✗"), dshOk ? Palette.Success : Palette.Warn));
-                ovChips.Children.Add(Chip(running ? Lang.T("服务运行中") : Lang.T("服务未启动"), running ? Palette.Success : Palette.TextDim));
-                ovChips.Children.Add(Chip(Lang.T("代理") + ": " + (string.IsNullOrEmpty(lastProxy) ? Lang.T("直连") : lastProxy), string.IsNullOrEmpty(lastProxy) ? Palette.TextFaint : Palette.BlueLight));
+                ovChips.Children.Add(Chip("dsh " + (dshOk ? env.DshVersion : "✗"), dshOk ? Palette.Success : Palette.Warn));
+                ovChips.Children.Add(Chip(string.Format("http://127.0.0.1:{0}", dsh.Cfg.Port), Palette.TextDim));
+                ovChips.Children.Add(Chip("Node " + (nodeOk ? "✓" : "✗"), nodeOk ? Palette.Success : Palette.Warn));
+                ovChips.Children.Add(Chip("npm " + (string.IsNullOrEmpty(env.NpmPath) ? "✗" : "✓"), string.IsNullOrEmpty(env.NpmPath) ? Palette.Warn : Palette.Success));
+                ovChips.Children.Add(Chip("git " + (string.IsNullOrEmpty(env.GitPath) ? "✗" : "✓"), string.IsNullOrEmpty(env.GitPath) ? Palette.Warn : Palette.Success));
+                ovChips.Children.Add(Chip(Lang.T("插件") + " " + env.PluginDirs + " 个", Palette.TextDim));
+                ovChips.Children.Add(Chip(string.IsNullOrEmpty(lastProxy) ? Lang.T("直连") : "代理 " + lastProxy, string.IsNullOrEmpty(lastProxy) ? Palette.TextFaint : Palette.BlueLight));
             }
-            // 打开浏览器按钮: 仅服务运行时显示
-            if (ovOpenBrowser != null) ovOpenBrowser.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+            // 停止/重启按钮: 仅服务运行时显示
+            if (ovStop != null) ovStop.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+            if (ovRestart != null) ovRestart.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
             // 最近日志预览
             if (ovLog != null)
             {
-                string tail = Dsh.ReadTail(Path.Combine(dsh.Cfg.LogDir, "launcher.log"), 6);
+                string tail = Dsh.ReadTail(Path.Combine(dsh.Cfg.LogDir, "launcher.log"), 12);
                 ovLog.Text = string.IsNullOrEmpty(tail) ? Lang.T("暂无日志") : tail;
+            }
+            // 状态栏圆点 + 右侧
+            if (sbDot != null)
+            {
+                sbDot.Foreground = Palette.Brush(running ? Palette.Success : Palette.TextDim);
+                sbText.Text = running ? "● " + Lang.T("服务已在运行") : sbText.Text;
             }
             sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.5.0 (WPF)"), dsh.Cfg.Port);
         }
 
-        void ToggleService()
+        // 主按钮: 未安装→安装; 未启动→启动; 运行中→打开浏览器
+        void PrimaryAction()
         {
-            if (Dsh.IsPortOpen(dsh.Cfg.Port)) dsh.StopServiceAsync();
-            else dsh.StartServiceAsync();
-            // 轮询状态刷新
+            bool running = Dsh.IsPortOpen(dsh.Cfg.Port);
+            bool nodeOk = !string.IsNullOrEmpty(dsh.Env.NodePath);
+            bool dshOk = !string.IsNullOrEmpty(dsh.Env.DshPath);
+            if (!nodeOk || !dshOk) { RunInstall(); return; }
+            if (running) { dsh.OpenBrowser(); return; }
+            dsh.StartServiceAsync();
+            PollServiceState();
+        }
+
+        void RestartService()
+        {
+            dsh.RestartServiceAsync();
+            PollServiceState();
+        }
+
+        void PollServiceState()
+        {
             var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
             timer.Tick += delegate
             {
                 RenderOverview();
                 if (sbText.Text.IndexOf("就绪", StringComparison.Ordinal) >= 0 || sbText.Text.IndexOf("失败", StringComparison.Ordinal) >= 0
-                    || sbText.Text.IndexOf("停止", StringComparison.Ordinal) >= 0)
+                    || sbText.Text.IndexOf("停止", StringComparison.Ordinal) >= 0 || sbText.Text.IndexOf("启动", StringComparison.Ordinal) >= 0)
                     timer.Stop();
             };
             timer.Start();
@@ -991,10 +1131,15 @@ namespace DeepSeekHarness
                 nameCol.Children.Add(new TextBlock { Text = p.Name, Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold });
                 nameCol.Children.Add(new TextBlock
                 {
-                    Text = p.Disabled ? "● 已禁用" : (p.IsGit ? "● git" : "● 普通目录"),
+                    Text = p.Disabled ? "● " + Lang.T("已禁用") : (p.IsGit ? "● git" : "● " + Lang.T("普通目录")),
                     Foreground = Palette.Brush(p.Disabled ? Palette.Warn : (p.IsGit ? Palette.Success : Palette.TextDim)),
                     FontSize = 11
                 });
+                if (p.IsGit)
+                {
+                    string h = dsh.LocalHash(p);
+                    nameCol.Children.Add(new TextBlock { Text = "本地 " + h, Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11 });
+                }
                 row.Children.Add(nameCol);
                 var urlLbl = new TextBlock
                 {
@@ -1322,6 +1467,8 @@ namespace DeepSeekHarness
             var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
             btnRow.Children.Add(Btn(Lang.T("保存设置"), delegate { SaveSettings(); }, true));
             btnRow.Children.Add(Btn(Lang.T("自动检测回填"), delegate { AutoFillSettings(); }, false));
+            btnRow.Children.Add(Btn(Lang.T("检测代理"), delegate { DetectProxyFill(); }, false));
+            btnRow.Children.Add(Btn(Lang.T("桌面快捷方式"), delegate { MakeShortcut(); }, false));
             btnRow.Children.Add(Btn(Lang.T("打开配置文件"), delegate { try { Process.Start("notepad.exe", "\"" + LauncherConfig.ConfigPath + "\""); } catch { } }, false));
             stack.Children.Add(btnRow);
             var gh = new TextBlock
@@ -1398,6 +1545,33 @@ namespace DeepSeekHarness
             });
             t.IsBackground = true;
             t.Start();
+        }
+
+        // 检测代理并回填输入框
+        void DetectProxyFill()
+        {
+            sbText.Text = "正在检测代理…";
+            var t = new Thread(delegate()
+            {
+                string p = null;
+                try { p = dsh.ResolveProxy(); } catch { }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (!string.IsNullOrEmpty(p)) setBoxes["proxy"].Text = p;
+                    sbText.Text = string.IsNullOrEmpty(p) ? "未检测到代理" : "已检测到代理 " + p;
+                }));
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        void MakeShortcut()
+        {
+            string err = dsh.CreateDesktopShortcut();
+            if (err.Length == 0)
+                MessageBox.Show(this, "已在桌面创建「DeepSeek Harness」快捷方式，双击即可启动。", Lang.T("桌面快捷方式"), MessageBoxButton.OK, MessageBoxImage.Information);
+            else
+                MessageBox.Show(this, err, Lang.T("桌面快捷方式"), MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         // ---------- 输入对话框 ----------
