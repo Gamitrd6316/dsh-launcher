@@ -262,6 +262,8 @@ namespace DeepSeekHarness
         TextBlock upLupCur, upLupLatest, upLupNote;
         TextBlock upDshCur, upDshLatest, upDshNote;
         TextBlock upPluginNote;
+        Button upLupGo, upDshUp, upPluginUp;
+        string lupLatestStr = "";
         // 日志页
         ModernDropdown logKind;
         System.Windows.Controls.TextBox logBox;
@@ -868,9 +870,11 @@ namespace DeepSeekHarness
                         Dispatcher.BeginInvoke(new Action(delegate
                         {
                             upLupLatest.Text = "最新 " + lupLatest;
+                            lupLatestStr = lupLatest;
                             bool newer = lupLatest != "1.5.0";
                             upLupNote.Text = newer ? "发现新版本，可前往 GitHub 下载" : "已是最新版本";
                             upLupNote.Foreground = Palette.Brush(newer ? Palette.Warn : Palette.TextFaint);
+                            RenderUpdate();
                         }));
                     }
                 }
@@ -1370,9 +1374,9 @@ namespace DeepSeekHarness
             lupCol.Children.Add(upLupLatest);
             lupCol.Children.Add(upLupNote);
             lup.Children.Add(lupCol);
-            var lupBtn = Btn(Lang.T("前往 GitHub"), delegate { try { Process.Start("https://github.com/loudMore/dsh-launcher/releases"); } catch { } }, false);
-            Grid.SetColumn(lupBtn, 2);
-            lup.Children.Add(lupBtn);
+            upLupGo = Btn(Lang.T("前往 GitHub"), delegate { try { Process.Start("https://github.com/loudMore/dsh-launcher/releases"); } catch { } }, false);
+            Grid.SetColumn(upLupGo, 2);
+            lup.Children.Add(upLupGo);
             stack.Children.Add(Card(lup));
 
             // dsh
@@ -1388,18 +1392,18 @@ namespace DeepSeekHarness
             dshCol.Children.Add(upDshLatest);
             dshCol.Children.Add(upDshNote);
             dshG.Children.Add(dshCol);
-            var dshBtn = Btn(Lang.T("立即升级 dsh"), delegate { UpgradeDsh(); }, true);
-            Grid.SetColumn(dshBtn, 2);
-            dshG.Children.Add(dshBtn);
+            upDshUp = Btn(Lang.T("立即升级 dsh"), delegate { UpgradeDsh(); }, true);
+            Grid.SetColumn(upDshUp, 2);
+            dshG.Children.Add(upDshUp);
             stack.Children.Add(Card(dshG));
 
             // 插件
             var plg = new StackPanel();
             upPluginNote = new TextBlock { Text = "插件更新: 未检查", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold };
             plg.Children.Add(upPluginNote);
-            var plgBtn = Btn(Lang.T("全部更新插件"), delegate { UpdateAllPlugins(); }, false);
-            plgBtn.Margin = new Thickness(0, 8, 0, 0);
-            plg.Children.Add(plgBtn);
+            upPluginUp = Btn(Lang.T("全部更新插件"), delegate { UpdateAllPlugins(); }, false);
+            upPluginUp.Margin = new Thickness(0, 8, 0, 0);
+            plg.Children.Add(upPluginUp);
             stack.Children.Add(Card(plg));
 
             scroll.Content = stack;
@@ -1418,6 +1422,24 @@ namespace DeepSeekHarness
                 ? "插件更新: " + u.PluginCount + " 个可更新（" + u.PluginNames + "）"
                 : "插件更新: 全部最新";
             upPluginNote.Foreground = Palette.Brush(u.PluginCount > 0 ? Palette.Warn : Palette.Text);
+            // 版本状态 → 按钮状态: 已最新则按钮置灰显示 ✓, 有更新才可点击
+            if (upDshUp != null)
+                SetBtnState(upDshUp, u.DshUpdate, u.DshUpdate ? Lang.T("立即升级 dsh") : "✓ " + Lang.T("已是最新"));
+            if (upPluginUp != null)
+                SetBtnState(upPluginUp, u.PluginCount > 0, u.PluginCount > 0 ? Lang.T("全部更新插件") + " (" + u.PluginCount + ")" : "✓ " + Lang.T("已是最新"));
+            if (upLupGo != null)
+            {
+                bool lupNewer = lupLatestStr.Length > 0 && lupLatestStr != "1.5.0";
+                SetBtnState(upLupGo, lupNewer, lupNewer ? Lang.T("前往 GitHub") : "✓ " + Lang.T("已是最新"));
+            }
+        }
+
+        static void SetBtnState(Button b, bool enabled, string text)
+        {
+            if (b == null) return;
+            b.IsEnabled = enabled;
+            b.Content = text;
+            b.Opacity = enabled ? 1.0 : 0.55;
         }
 
         void RunUpdateCheck()
@@ -1434,6 +1456,7 @@ namespace DeepSeekHarness
                     if (lupLatest != null)
                     {
                         upLupLatest.Text = "最新 " + lupLatest;
+                        lupLatestStr = lupLatest;
                         newer = lupLatest != "1.5.0";
                     }
                     upLupNote.Text = newer ? "发现新版本，可前往 GitHub 下载" : "已是最新版本";
