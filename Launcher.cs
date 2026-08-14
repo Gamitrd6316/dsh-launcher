@@ -6001,10 +6001,11 @@ namespace DeepSeekHarness
                 note.ForeColor = DshTheme.TextDim;
                 fetchBtn.Enabled = false;
             }
-            string proxy = null;
-            try { proxy = owner.ResolveProxy(); } catch { }   // 全自动: 手动配置 → 环境变量 → 系统代理 → 端口扫描
             var worker = new Thread(delegate()
             {
+                // 代理探测(含端口扫描, 可能耗时数秒~数十秒)必须放在后台线程, 否则打开商城会卡死界面
+                string proxy = null;
+                try { proxy = owner.ResolveProxy(); } catch { }
                 var got = Fetch(proxy);
                 Ui(delegate
                 {
