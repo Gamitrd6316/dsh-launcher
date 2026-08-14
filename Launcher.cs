@@ -61,6 +61,8 @@ namespace DeepSeekHarness
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // TLS 1.2: GitHub/npm 等站点最低要求 (老 .NET 默认仅 SSL3/TLS1.0, 会导致 api.github.com 握手失败)
+            try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)(3072 | 768 | 192); } catch { }
             // 固定任务栏分组 ID, 保证任务栏/固定图标显示 exe 图标(DeepSeek 鲸鱼)
             try { SetCurrentProcessExplicitAppUserModelID("DeepSeekHarness.Launcher.1"); } catch { }
             try { DebugMode = Environment.GetEnvironmentVariable("DSH_LAUNCHER_DEBUG") == "1"; } catch { }
@@ -386,6 +388,10 @@ namespace DeepSeekHarness
         public string Language = "";                // 界面语言: 空=跟随系统, zh / en
         public string LauncherUpdateUrl = "https://raw.githubusercontent.com/loudMore/dsh-launcher/main/version.txt"; // 启动器自更新检查地址(返回纯版本号)
         public string NpmRegistry = "";              // npm 镜像源(空=官方源, 失败自动回退 npmmirror 国内镜像)
+        public string NodePath = "";                 // 手动指定 node.exe(空=自动检测)
+        public string NpmPath = "";                  // 手动指定 npm.cmd(空=自动检测)
+        public string GitPath = "";                  // 手动指定 git.exe(空=自动检测)
+        public string Proxy = "";                    // 代理地址(如 http://127.0.0.1:7890; 空=自动探测本机常见代理端口)
 
         public static string ConfigPath
         {
@@ -435,6 +441,10 @@ namespace DeepSeekHarness
                     cfg.Language = StrOf(Unesc(Get(json, "language")), cfg.Language);
                     cfg.LauncherUpdateUrl = StrOf(Unesc(Get(json, "launcherUpdateUrl")), cfg.LauncherUpdateUrl);
                     cfg.NpmRegistry = StrOf(Unesc(Get(json, "npmRegistry")), cfg.NpmRegistry);
+                    cfg.NodePath = StrOf(Unesc(Get(json, "nodePath")), cfg.NodePath);
+                    cfg.NpmPath = StrOf(Unesc(Get(json, "npmPath")), cfg.NpmPath);
+                    cfg.GitPath = StrOf(Unesc(Get(json, "gitPath")), cfg.GitPath);
+                    cfg.Proxy = StrOf(Unesc(Get(json, "proxy")), cfg.Proxy);
                 }
             }
             catch { }
@@ -447,11 +457,12 @@ namespace DeepSeekHarness
             try
             {
                 string json = string.Format(
-                    "{{\"port\":{0},\"dshCommand\":\"{1}\",\"dshHome\":\"{2}\",\"pluginsRoot\":\"{3}\",\"logDir\":\"{4}\",\"checkUpdatesOnStart\":{5},\"autoStartService\":{6},\"restartIfRunning\":{7},\"openBrowserOnStart\":{8},\"npmPackage\":\"{9}\",\"language\":\"{10}\",\"launcherUpdateUrl\":\"{11}\",\"npmRegistry\":\"{12}\"}}",
+                    "{{\"port\":{0},\"dshCommand\":\"{1}\",\"dshHome\":\"{2}\",\"pluginsRoot\":\"{3}\",\"logDir\":\"{4}\",\"checkUpdatesOnStart\":{5},\"autoStartService\":{6},\"restartIfRunning\":{7},\"openBrowserOnStart\":{8},\"npmPackage\":\"{9}\",\"language\":\"{10}\",\"launcherUpdateUrl\":\"{11}\",\"npmRegistry\":\"{12}\",\"nodePath\":\"{13}\",\"npmPath\":\"{14}\",\"gitPath\":\"{15}\",\"proxy\":\"{16}\"}}",
                     Port, JsonEsc(DshCommand), JsonEsc(DshHome), JsonEsc(PluginsRoot), JsonEsc(LogDir),
                     CheckUpdatesOnStart ? "true" : "false", AutoStartService ? "true" : "false",
                     RestartIfRunning ? "true" : "false", OpenBrowserOnStart ? "true" : "false",
-                    JsonEsc(NpmPackage), JsonEsc(Language), JsonEsc(LauncherUpdateUrl), JsonEsc(NpmRegistry));
+                    JsonEsc(NpmPackage), JsonEsc(Language), JsonEsc(LauncherUpdateUrl), JsonEsc(NpmRegistry),
+                    JsonEsc(NodePath), JsonEsc(NpmPath), JsonEsc(GitPath), JsonEsc(Proxy));
                 File.WriteAllText(ConfigPath, json);
                 return true;
             }
@@ -522,6 +533,19 @@ namespace DeepSeekHarness
         public bool Disabled;
         public string RemoteUrl = "";
         public string Branch = "";
+    }
+
+    // ---------- 商城条目 ----------
+    class StoreItem
+    {
+        public string Name = "";
+        public string FullName = "";
+        public string Url = "";
+        public string Desc = "";
+        public int Stars;
+        public string Lang = "";
+        public string Branch = "";   // 默认分支 (GitHub API 提供; 精选列表兜底时为空)
+        public string Pushed = "";   // 最近推送日期 YYYY-MM-DD (GitHub API 提供)
     }
 
     // ---------- 矢量图标 (GDI 绘制, 无需图片资源) ----------
@@ -603,6 +627,11 @@ namespace DeepSeekHarness
                         g.DrawEllipse(pen, x + w * 0.28f, y + h * 0.12f, w * 0.44f, h * 0.76f);
                         g.DrawLine(pen, x + w * 0.12f, y + h * 0.5f, x + w * 0.88f, y + h * 0.5f);
                         break;
+                    case 11: // store (商城/购物袋)
+                        g.DrawArc(pen, x + w * 0.22f, y + h * 0.08f, w * 0.28f, h * 0.28f, 180, 180);
+                        g.DrawArc(pen, x + w * 0.5f, y + h * 0.08f, w * 0.28f, h * 0.28f, 180, 180);
+                        g.DrawRectangle(pen, x + w * 0.12f, y + h * 0.24f, w * 0.76f, h * 0.68f);
+                        break;
                 }
             }
         }
@@ -639,7 +668,7 @@ namespace DeepSeekHarness
 
         static Dictionary<string, string> en = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            { "概览", "Overview" }, { "环境", "Environment" }, { "插件", "Plugins" }, { "更新", "Updates" }, { "日志", "Logs" }, { "设置", "Settings" },
+            { "概览", "Overview" }, { "环境", "Environment" }, { "插件", "Plugins" }, { "更新", "Updates" }, { "日志", "Logs" }, { "设置", "Settings" }, { "商城", "Store" },
             { "DSH 启动器", "DSH Launcher" },
             { "刷新列表", "Refresh" }, { "安装插件", "Install Plugin" }, { "全部更新", "Update All" }, { "修复依赖", "Fix Deps" }, { "一键维护", "Maintain" },
             { "重新检测", "Re-detect" }, { "一键安装 / 修复环境", "Install / Repair" },
@@ -651,6 +680,18 @@ namespace DeepSeekHarness
             { "检查更新", "Check Updates" }, { "立即升级", "Upgrade Now" }, { "下载新版本", "Download" },
             { "当前版本", "Current" }, { "最新版本", "Latest" }, { "未检查", "Not checked" },
             { "打开目录", "Open Folder" }, { "目录", "Folder" }, { "卸载", "Remove" },
+            { "插件商城", "Plugin Store" }, { "获取列表", "Fetch List" }, { "打开网页", "Open Web" }, { "可安装插件", "Installable Plugins" },
+            { "预览", "Preview" }, { "搜索插件…", "Search plugins…" },
+            { "缓存", "cache" }, { "按星标排序", "Sort by stars" }, { "按名称排序", "Sort by name" }, { "默认顺序", "Default order" },
+            { "全部语言", "All languages" }, { "正在刷新…", "Refreshing…" }, { "浏览", "Browse" },
+            { "安装", "Install" }, { "网页", "Web" }, { "数据来自 GitHub 主题 dsh-plugin · 支持搜索筛选", "Data from GitHub topic dsh-plugin" },
+            { "正在获取插件列表…", "Fetching plugin list…" }, { "获取失败：需要能访问 GitHub，请检查网络后重试", "Fetch failed: GitHub access required" },
+            { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { "没有匹配的插件，换个关键词试试", "No matching plugins" },
+            { "点击「获取列表」加载 GitHub 上的 dsh-plugin 插件", "Click Fetch List to load plugins from GitHub" },
+            { "该插件已安装（目录已存在）：\n", "Already installed (directory exists):\n" },
+            { "未检测到 Git：请先到「环境」页安装或手动选择 git.exe", "Git not found: install or pick git.exe on the Environment page" },
+            { "正在安装插件", "Installing plugin" }, { "克隆失败（网络或地址错误）。\n详见「日志」页。", "Clone failed (network or URL).\nSee the Logs page." },
+            { "已安装。\n重启服务后生效；若插件在仓库子目录，请在 DSH 设置中配置挂载。", "Installed.\nRestart to take effect; if the plugin lives in a subdirectory, mount it in DSH settings." },
             { "启用", "Enable" }, { "禁用", "Disable" }, { "已禁用", "Disabled" }, { "已启用插件", "Enabled plugin" }, { "已禁用插件", "Disabled plugin" }, { "操作失败", "Operation failed" },
             { "刷新", "Refresh" }, { "清空当前日志", "Clear Log" }, { "打开日志目录", "Open Log Folder" }, { "自动刷新", "Auto refresh" },
             { "自动检测", "Auto Detect" }, { "保存设置", "Save" }, { "打开配置文件", "Open Config" },
@@ -1118,7 +1159,7 @@ namespace DeepSeekHarness
         public BufPanel()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.ResizeRedraw, true);
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         }
     }
 
@@ -1134,6 +1175,7 @@ namespace DeepSeekHarness
             AutoScroll = true;
             DoubleBuffered = true;
             BackColor = Color.Transparent;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         }
 
         public void BeginAdd() { y = 4; }
@@ -1378,7 +1420,7 @@ namespace DeepSeekHarness
     // ---------- 主窗口 ----------
     class LauncherForm : Form
     {
-        const string LauncherVersion = "1.4.6";
+        const string LauncherVersion = "1.5.0";
 
         LauncherConfig cfg;
         Process serverProc;
@@ -1437,9 +1479,12 @@ namespace DeepSeekHarness
         CheckBox logAuto;
 
         // 设置页
-        TextBox setCmd, setPort, setHome, setPlugins, setLog, setNpm, setLupUrl;
+        TextBox setCmd, setPort, setHome, setPlugins, setLog, setNpm, setLupUrl, setProxy;
         ComboBox setLang;
         ModernButton setDetect, setSave, setOpenCfg;
+
+        // 商城窗口
+        StoreForm storeWin;
 
         // 托盘与定时器
         NotifyIcon tray;
@@ -2037,13 +2082,16 @@ namespace DeepSeekHarness
                 BackColor = Color.Transparent,
                 Padding = new Padding(0, Px(4), 0, 0)
             };
-            pluginRefresh = MakeBtn(Lang.T("刷新列表"), Px(76), Px(36), false); pluginRefresh.Margin = new Padding(0, 0, Px(8), 0); pluginRefresh.Click += delegate { RenderPlugins(); };
-            pluginInstall = MakeBtn(Lang.T("安装插件"), Px(96), Px(36), true); pluginInstall.Margin = new Padding(0, 0, Px(8), 0); pluginInstall.Click += delegate { InstallPlugin(); };
-            pluginUpdateAll = MakeBtn("↻ " + Lang.T("全部更新"), Px(132), Px(36), false); pluginUpdateAll.Margin = new Padding(0, 0, Px(8), 0); pluginUpdateAll.Click += delegate { UpdateAllPlugins(); };
-            pluginRepair = MakeBtn(Lang.T("修复依赖"), Px(100), Px(36), false); pluginRepair.Margin = new Padding(0, 0, Px(8), 0); pluginRepair.Click += delegate { RepairPlugins(); };
-            pluginMaintain = MakeBtn(Lang.T("一键维护"), Px(96), Px(36), false); pluginMaintain.Margin = Padding.Empty; pluginMaintain.Click += delegate { MaintainPlugins(); };
-            toolbar.Controls.AddRange(new Control[] { pluginRefresh, pluginInstall, pluginUpdateAll, pluginRepair, pluginMaintain });
+            // 工具栏按钮统一宽度、统一暗色风格 (傻瓜式: 一眼整齐, 不分主次打扰)
+            pluginRefresh = MakeBtn(Lang.T("刷新列表"), Px(108), Px(36), false); pluginRefresh.Margin = new Padding(0, 0, Px(8), 0); pluginRefresh.Click += delegate { RenderPlugins(); };
+            pluginInstall = MakeBtn(Lang.T("安装插件"), Px(108), Px(36), false); pluginInstall.Margin = new Padding(0, 0, Px(8), 0); pluginInstall.Click += delegate { InstallPlugin(); };
+            var pluginStoreBtn = MakeBtn("🛍 " + Lang.T("插件商城"), Px(108), Px(36), false); pluginStoreBtn.Margin = new Padding(0, 0, Px(8), 0); pluginStoreBtn.Click += delegate { OpenStoreWindow(); };
+            pluginUpdateAll = MakeBtn("↻ " + Lang.T("全部更新"), Px(108), Px(36), false); pluginUpdateAll.Margin = new Padding(0, 0, Px(8), 0); pluginUpdateAll.Click += delegate { UpdateAllPlugins(); };
+            pluginRepair = MakeBtn(Lang.T("修复依赖"), Px(108), Px(36), false); pluginRepair.Margin = new Padding(0, 0, Px(8), 0); pluginRepair.Click += delegate { RepairPlugins(); };
+            pluginMaintain = MakeBtn(Lang.T("一键维护"), Px(108), Px(36), false); pluginMaintain.Margin = Padding.Empty; pluginMaintain.Click += delegate { MaintainPlugins(); };
+            toolbar.Controls.AddRange(new Control[] { pluginRefresh, pluginInstall, pluginStoreBtn, pluginUpdateAll, pluginRepair, pluginMaintain });
 
+            // ---- 已安装插件管理 ----
             var card = new RoundPanel { Padding = new Padding(Px(10), Px(6), Px(10), Px(10)) };
             var head = new Panel { Dock = DockStyle.Top, Height = Px(30), BackColor = Color.Transparent };
             var headTitle = new Label { Text = Lang.T("已安装插件"), AutoSize = true, Dock = DockStyle.Left, ForeColor = DshTheme.TextMain, BackColor = Color.Transparent, Font = DshFonts.CardTitle, TextAlign = ContentAlignment.MiddleLeft };
@@ -2060,6 +2108,20 @@ namespace DeepSeekHarness
             AddRow(stack, card, SizeType.Percent, 100);
             page.Controls.Add(stack);
             return page;
+        }
+
+        void OpenStoreWindow()
+        {
+            if (storeWin == null || storeWin.IsDisposed)
+            {
+                storeWin = new StoreForm(this);
+                storeWin.Show(this);
+            }
+            else
+            {
+                storeWin.Show();
+                storeWin.Activate();
+            }
         }
 
         // ============ 更新页 ============
@@ -2201,11 +2263,11 @@ namespace DeepSeekHarness
             AddRow(stack, MakeSection(Lang.T("设置")), SizeType.Absolute, Px(32));
 
             var card = new RoundPanel();
-            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(Px(14)), ColumnCount = 2, RowCount = 9, BackColor = Color.Transparent };
+            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(Px(14)), ColumnCount = 2, RowCount = 10, BackColor = Color.Transparent };
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Px(124)));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            for (int i = 0; i < 9; i++)
-                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Px(i < 8 ? 38 : 48)));
+            for (int i = 0; i < 10; i++)
+                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Px(i < 9 ? 38 : 48)));
 
             setCmd = NewSettingBox(grid, 0, 6, Lang.T("dsh 命令"), cfg.DshCommand);
             setPort = NewSettingBox(grid, 1, 7, Lang.T("服务端口"), cfg.Port.ToString());
@@ -2214,6 +2276,7 @@ namespace DeepSeekHarness
             setLog = NewSettingBox(grid, 4, 4, Lang.T("日志目录"), cfg.LogDir);
             setNpm = NewSettingBox(grid, 5, 2, Lang.T("npm 包名"), cfg.NpmPackage);
             setLupUrl = NewSettingBox(grid, 6, 9, Lang.T("启动器更新源"), cfg.LauncherUpdateUrl);
+            setProxy = NewSettingBox(grid, 7, 7, Lang.T("代理地址"), cfg.Proxy);
 
             // 语言选择(带地球图标 + 国旗)
             var langCell = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent, Margin = Padding.Empty };
@@ -2237,22 +2300,295 @@ namespace DeepSeekHarness
             setLang.Items.Add("🇨🇳 简体中文");
             setLang.Items.Add("🇺🇸 English");
             setLang.SelectedIndex = (cfg.Language == "zh") ? 1 : (cfg.Language == "en" ? 2 : 0);
-            grid.Controls.Add(langCell, 0, 7);
-            grid.Controls.Add(setLang, 1, 7);
+            grid.Controls.Add(langCell, 0, 8);
+            grid.Controls.Add(setLang, 1, 8);
 
             var btnCell = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Color.Transparent, Margin = Padding.Empty, Padding = new Padding(0, Px(4), 0, 0) };
             setDetect = MakeBtn(Lang.T("自动检测"), Px(88), Px(36), false); setDetect.Margin = new Padding(0, 0, Px(10), 0); setDetect.Click += delegate { RunDetect(); };
             setSave = MakeBtn(Lang.T("保存设置"), Px(88), Px(36), true); setSave.Margin = new Padding(0, 0, Px(10), 0); setSave.Click += delegate { SaveSettings(); };
             setOpenCfg = MakeBtn(Lang.T("打开配置文件"), Px(100), Px(36), false); setOpenCfg.Margin = new Padding(0, 0, Px(10), 0); setOpenCfg.Click += delegate { OpenConfigFile(); };
-            var setShortcut = MakeBtn(Lang.T("桌面快捷方式"), Px(100), Px(36), false); setShortcut.Margin = Padding.Empty; setShortcut.Click += delegate { CreateDesktopShortcut(); };
-            btnCell.Controls.AddRange(new Control[] { setDetect, setSave, setOpenCfg, setShortcut });
-            grid.Controls.Add(btnCell, 1, 8);
+            var setShortcut = MakeBtn(Lang.T("桌面快捷方式"), Px(100), Px(36), false); setShortcut.Margin = new Padding(0, 0, Px(10), 0); setShortcut.Click += delegate { CreateDesktopShortcut(); };
+            var setProxyDetect = MakeBtn(Lang.T("检测代理"), Px(88), Px(36), false); setProxyDetect.Margin = Padding.Empty; setProxyDetect.Click += delegate { DetectProxyUi(); };
+            btnCell.Controls.AddRange(new Control[] { setDetect, setSave, setOpenCfg, setShortcut, setProxyDetect });
+            grid.Controls.Add(btnCell, 1, 9);
 
             card.Controls.Add(grid);
 
             AddRow(stack, card, SizeType.Percent, 100);
             page.Controls.Add(stack);
             return page;
+        }
+
+        // 从 awesome 精选列表 Markdown 解析仓库链接 (镜像兜底)
+        public static List<StoreItem> ParseMdList(string md)
+        {
+            var list = new List<StoreItem>();
+            if (string.IsNullOrEmpty(md)) return list;
+            try
+            {
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                string[] lines = md.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+                foreach (string raw in lines)
+                {
+                    string line = raw.Trim();
+                    if (line.Length == 0 || line.IndexOf("github.com/") < 0) continue;
+
+                    if (line.StartsWith("|"))
+                    {
+                        // 表格行: | 需求 | [a](u) · [b](u) | 为什么 |  → 描述取链接所在格之后的第一个非空格
+                        string[] cells = line.Split('|');
+                        for (int c = 0; c < cells.Length; c++)
+                        {
+                            string cell = cells[c].Trim();
+                            if (cell.Length == 0) continue;
+                            int pos = 0;
+                            while (pos < cell.Length)
+                            {
+                                Match m = LinkRe.Match(cell, pos);
+                                if (!m.Success) break;
+                                pos = m.Index + m.Length;
+                                string full = OwnerRepo(m.Groups[2].Value);
+                                if (full == null || !seen.Add(full)) continue;
+                                string desc = "";
+                                for (int c2 = c + 1; c2 < cells.Length; c2++)
+                                {
+                                    string dc = CleanDesc(cells[c2]);
+                                    if (dc.Length > 0) { desc = dc; break; }
+                                }
+                                list.Add(MakeItem(full, m.Groups[1].Value, desc));
+                            }
+                        }
+                        continue;
+                    }
+
+                    // 非表格行: 标题 "### [name — desc](u)" 或普通条目 "- [name](u) - desc"
+                    int p2 = 0;
+                    int lastEnd = 0;
+                    while (p2 < line.Length)
+                    {
+                        Match m = LinkRe.Match(line, p2);
+                        if (!m.Success) break;
+                        lastEnd = m.Index + m.Length;
+                        p2 = lastEnd;
+                        string full = OwnerRepo(m.Groups[2].Value);
+                        if (full == null || !seen.Add(full)) continue;
+                        string label = m.Groups[1].Value.Trim();
+                        string name = full.Substring(full.IndexOf('/') + 1);
+                        string desc = "";
+                        int dash = label.IndexOf(" — ");
+                        if (dash < 0) dash = label.IndexOf(" - ");
+                        if (dash > 0)
+                        {
+                            string left = label.Substring(0, dash).Trim();
+                            if (left.Length > 0) name = left;
+                            desc = CleanDesc(label.Substring(dash + 3));
+                        }
+                        if (desc.Length == 0)
+                        {
+                            string rest = line.Substring(lastEnd).Trim();
+                            rest = rest.TrimStart('-', '·', '—', '–', '|', ' ').Trim();
+                            desc = CleanDesc(rest);
+                        }
+                        list.Add(MakeItem(full, name, desc));
+                    }
+                }
+            }
+            catch { }
+            return list;
+        }
+
+        static readonly Regex LinkRe = new Regex("\\[([^\\]\\n]*)\\]\\((https://github\\.com/[^)\\s]+)\\)", RegexOptions.Compiled);
+
+        static string OwnerRepo(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return null;
+            url = url.TrimEnd('/', '.', ')', '#');
+            if (url.IndexOf("/issues/") >= 0 || url.IndexOf("/tree/") >= 0 || url.IndexOf("/blob/") >= 0 || url.IndexOf("/topics/") >= 0) return null;
+            string full = url.Substring("https://github.com/".Length);
+            if (full.Length == 0 || full.IndexOf('/') < 0 || full.Split('/').Length != 2) return null;
+            return full;
+        }
+
+        static StoreItem MakeItem(string full, string name, string desc)
+        {
+            if (string.IsNullOrEmpty(name)) name = full.Substring(full.IndexOf('/') + 1);
+            if (desc.Length > 140) desc = desc.Substring(0, 140) + "…";
+            return new StoreItem { FullName = full, Name = name, Url = "https://github.com/" + full, Desc = desc, Stars = -1 };
+        }
+
+        static string CleanDesc(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            s = Regex.Replace(s, "\\[([^\\]]*)\\]\\([^)]*\\)", "$1");   // 链接只留文字
+            s = Regex.Replace(s, "<[^>]+>", " ");                        // 去 HTML 标签
+            s = s.Replace("`", "").Replace("|", " ").Replace("·", " ");
+            s = Regex.Replace(s, "\\s+", " ").Trim();
+            s = s.TrimStart('-', '—', '–', '*', '>', ':').Trim();
+            return s;
+        }
+
+        public static List<StoreItem> ParseStoreJson(string json)
+        {
+            var list = new List<StoreItem>();
+            if (string.IsNullOrEmpty(json)) return list;
+            try
+            {
+                int arr = json.IndexOf("\"items\"");
+                if (arr < 0) return list;
+                int start = json.IndexOf('[', arr);
+                if (start < 0) return list;
+                int depth = 0;
+                int objStart = -1;
+                bool inStr = false;
+                bool esc = false;
+                for (int i = start; i < json.Length; i++)
+                {
+                    char c = json[i];
+                    if (inStr)
+                    {
+                        if (esc) esc = false;
+                        else if (c == '\\') esc = true;
+                        else if (c == '"') inStr = false;
+                        continue;
+                    }
+                    if (c == '"') { inStr = true; continue; }
+                    if (c == '{')
+                    {
+                        depth++;
+                        if (depth == 2) objStart = i;
+                    }
+                    else if (c == '}')
+                    {
+                        depth--;
+                        if (depth == 1 && objStart >= 0)
+                        {
+                            var it = ParseStoreItem(json.Substring(objStart, i - objStart + 1));
+                            if (it != null) list.Add(it);
+                            objStart = -1;
+                        }
+                    }
+                    else if (c == ']' && depth == 1) break;
+                }
+            }
+            catch { }
+            return list;
+        }
+
+        public static StoreItem ParseStoreItem(string obj)
+        {
+            try
+            {
+                var it = new StoreItem();
+                it.FullName = JsStr(obj, "\"full_name\"");
+                it.Url = JsStr(obj, "\"html_url\"");
+                it.Desc = JsStr(obj, "\"description\"");
+                it.Lang = JsStr(obj, "\"language\"");
+                it.Branch = JsStr(obj, "\"default_branch\"");
+                string pushed = JsStr(obj, "\"pushed_at\"");
+                if (pushed.Length >= 10) it.Pushed = pushed.Substring(0, 10);
+                Match m = Regex.Match(obj, "\"stargazers_count\"\\s*:\\s*(\\d+)");
+                if (m.Success) int.TryParse(m.Groups[1].Value, out it.Stars);
+                if (string.IsNullOrEmpty(it.FullName)) return null;
+                int slash = it.FullName.IndexOf('/');
+                it.Name = slash >= 0 ? it.FullName.Substring(slash + 1) : it.FullName;
+                return it;
+            }
+            catch { return null; }
+        }
+
+        public static string JsStr(string obj, string key)
+        {
+            int k = obj.IndexOf(key);
+            if (k < 0) return "";
+            int colon = obj.IndexOf(':', k);
+            if (colon < 0) return "";
+            int i = colon + 1;
+            while (i < obj.Length && (obj[i] == ' ' || obj[i] == '\t')) i++;
+            if (i < obj.Length && obj[i] == '"')
+            {
+                var sb = new StringBuilder();
+                for (int j = i + 1; j < obj.Length; j++)
+                {
+                    char c = obj[j];
+                    if (c == '\\' && j + 1 < obj.Length)
+                    {
+                        char n = obj[j + 1];
+                        if (n == 'n') { sb.Append('\n'); j++; }
+                        else if (n == '"') { sb.Append('"'); j++; }
+                        else if (n == '\\') { sb.Append('\\'); j++; }
+                        else sb.Append(c);
+                    }
+                    else if (c == '"') break;
+                    else sb.Append(c);
+                }
+                return sb.ToString();
+            }
+            if (i < obj.Length && obj[i] == 'n') return "";
+            return "";
+        }
+
+        public void InstallFromStore(StoreItem it)
+        {
+            if (string.IsNullOrEmpty(currentEnv.GitPath))
+            {
+                DarkDialog.Show(this, Lang.T("未检测到 Git：请先到「环境」页安装或手动选择 git.exe"), Lang.T("安装"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            string target = Path.Combine(cfg.PluginsRoot, it.Name);
+            if (Directory.Exists(target) || File.Exists(target))
+            {
+                DarkDialog.Show(this, Lang.T("该插件已安装（目录已存在）：\n") + target, Lang.T("安装"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            SetStatus(Lang.T("正在安装插件") + " " + it.Name + " …", DshTheme.Info);
+            SetBusy(true);
+            var worker = new Thread(delegate ()
+            {
+                string r = RunGit("clone \"" + it.Url + "\" \"" + target + "\"", 300000);
+                AppendLog("[plugin] clone " + it.Url + (r == null ? " (超时/失败)" : " 完成"));
+                Ui(delegate
+                {
+                    SetBusy(false);
+                    if (r == null)
+                        ShowError(Lang.T("插件安装失败"), Lang.T("克隆失败（网络或地址错误）。\n详见「日志」页。"));
+                    else
+                    {
+                        SetStatus(Lang.T("插件") + " " + it.Name + " " + Lang.T("已安装"), DshTheme.Success);
+                        RenderPlugins();
+                        DarkDialog.Show(this, Lang.T("插件") + " " + it.Name + " " + Lang.T("已安装。\n重启服务后生效；若插件在仓库子目录，请在 DSH 设置中配置挂载。"), Lang.T("安装"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                });
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
+        // 手动触发代理探测并回填输入框
+        void DetectProxyUi()
+        {
+            setProxy.Text = "";
+            SetStatus("正在探测代理…", DshTheme.Info);
+            var worker = new Thread(delegate ()
+            {
+                proxyChecked = false;
+                detectedProxy = null;
+                string p = ResolveProxy();
+                Ui(delegate
+                {
+                    if (p != null)
+                    {
+                        setProxy.Text = p;
+                        SetStatus("已检测到代理 " + p, DshTheme.Success);
+                    }
+                    else
+                    {
+                        SetStatus("未检测到可用代理", DshTheme.Warn);
+                        DarkDialog.Show(this, "未检测到可用代理。\n\n提示：开启 Clash/v2rayN 等工具后，可勾选其「系统代理」模式，或在「代理地址」中手动填写（如 http://127.0.0.1:7890）。", "检测代理", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                });
+            });
+            worker.IsBackground = true;
+            worker.Start();
         }
 
         TextBox NewSettingBox(TableLayoutPanel grid, int row, int iconId, string label, string value)
@@ -2539,11 +2875,15 @@ namespace DeepSeekHarness
             AddEnvRow(envHost, "git", currentEnv.GitPath, currentEnv.GitVersion);
             AddEnvRow(envHost, "dsh", currentEnv.DshPath, currentEnv.DshVersion);
 
-            // 缺失环境 → 给出直接可点的解决方案
+            // 缺失环境 → 多策略解决方案: 自动安装 / 手动选择 / 目录扫描, 附带小白友好提示
             if (string.IsNullOrEmpty(currentEnv.NodePath))
-                AddEnvActionRow(envHost, "未检测到 Node.js — 点击「一键安装」自动装好（含国内镜像）", "一键安装", delegate { InstallDshNow(); });
+                AddEnvActionRow2(envHost, "未检测到 Node.js：可点「一键安装」自动装好（含国内镜像），或选择已安装的 node.exe", "一键安装", delegate { InstallDshNow(); }, "手动选择", delegate { PickTool("node"); }, "扫描目录", delegate { ScanToolDir("node"); });
+            if (string.IsNullOrEmpty(currentEnv.NpmPath))
+                AddEnvActionRow2(envHost, "未检测到 npm：它随 Node.js 一起安装，通常在 nodejs 安装目录内", "手动选择", delegate { PickTool("npm"); }, "扫描目录", delegate { ScanToolDir("npm"); });
             if (string.IsNullOrEmpty(currentEnv.GitPath))
-                AddEnvActionRow(envHost, "未检测到 Git — 插件更新/安装需要它，可从镜像站快速下载", "安装 Git", delegate { OpenMirrorGit(); });
+                AddEnvActionRow2(envHost, "未检测到 Git：插件管理需要它，可从镜像站下载安装，或选择已装的 git.exe", "安装 Git", delegate { OpenMirrorGit(); }, "手动选择", delegate { PickTool("git"); }, "扫描目录", delegate { ScanToolDir("git"); });
+            if (string.IsNullOrEmpty(currentEnv.DshPath))
+                AddEnvActionRow2(envHost, "未检测到 dsh：点「一键安装」，或手动选择 dsh.cmd（通常在 npm 全局目录，可用 npm root -g 查看）", "一键安装", delegate { InstallDshNow(); }, "手动选择", delegate { PickTool("dsh"); }, "扫描目录", delegate { ScanToolDir("dsh"); });
 
             AddEnvSection(envHost, "关键目录");
             AddPathRow(envHost, "数据目录 (DSH_HOME)", cfg.DshHome);
@@ -2567,6 +2907,16 @@ namespace DeepSeekHarness
 
         void AddEnvActionRow(StackPanel host, string text, string btnText, Action action)
         {
+            AddEnvActionRow2(host, text, btnText, action, "", null, "", null);
+        }
+
+        void AddEnvActionRow2(StackPanel host, string text, string b1, Action a1, string b2, Action a2)
+        {
+            AddEnvActionRow2(host, text, b1, a1, b2, a2, "", null);
+        }
+
+        void AddEnvActionRow2(StackPanel host, string text, string b1, Action a1, string b2, Action a2, string b3, Action a3)
+        {
             var row = new Panel { BackColor = DshTheme.BgInput };
             row.Paint += delegate(object s, PaintEventArgs e)
             {
@@ -2578,23 +2928,101 @@ namespace DeepSeekHarness
             {
                 Text = text,
                 AutoSize = false,
-                Location = new Point(Px(12), Px(7)),
+                Location = new Point(Px(12), Px(6)),
                 ForeColor = DshTheme.Warn,
                 BackColor = Color.Transparent,
                 Font = DshFonts.Body
             };
             lbl.Width = Math.Max(10, row.Width - Px(150));
-            var btn = MakeBtn(btnText, Px(110), Px(26), true);
-            btn.Anchor = AnchorStyles.Right | AnchorStyles.Top;
-            btn.Click += delegate { action(); };
+            var btns = new List<ModernButton>();
+            Action<string, Action> addBtn = delegate(string t, Action a)
+            {
+                if (string.IsNullOrEmpty(t)) return;
+                var b = MakeBtn(t, Px(t.Length > 4 ? 104 : 96), Px(26), t.IndexOf("安装") >= 0);
+                b.Anchor = AnchorStyles.Right | AnchorStyles.Top;
+                b.Click += delegate { a(); };
+                row.Controls.Add(b);
+                btns.Add(b);
+            };
+            addBtn(b3, a3); addBtn(b2, a2); addBtn(b1, a1);
             row.Controls.Add(lbl);
-            row.Controls.Add(btn);
             row.Resize += delegate
             {
-                btn.Location = new Point(row.Width - btn.Width - Px(10), Px(12));
-                lbl.Width = Math.Max(10, row.Width - Px(150));
+                int x = row.Width - Px(10);
+                for (int i = 0; i < btns.Count; i++)
+                {
+                    btns[i].Location = new Point(x - btns[i].Width, Px(11));
+                    x -= btns[i].Width + Px(8);
+                }
+                lbl.Width = Math.Max(10, x - Px(10));
             };
-            host.Add(row, Px(52));
+            host.Add(row, Px(50));
+        }
+
+        // 手动选择工具文件
+        void PickTool(string which)
+        {
+            using (var d = new OpenFileDialog())
+            {
+                d.Title = "选择工具文件";
+                d.Filter = (which == "dsh" || which == "npm")
+                    ? "命令文件 (*.cmd;*.exe)|*.cmd;*.exe|所有文件 (*.*)|*.*"
+                    : "程序 (*.exe)|*.exe|所有文件 (*.*)|*.*";
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                if (which == "node") cfg.NodePath = d.FileName;
+                else if (which == "npm") cfg.NpmPath = d.FileName;
+                else if (which == "git") cfg.GitPath = d.FileName;
+                else cfg.DshCommand = d.FileName;
+                cfg.Save();
+                RedetectNow();
+            }
+        }
+
+        // 扫描目录找工具(当前层 + bin/cmd/一层子目录)
+        void ScanToolDir(string which)
+        {
+            using (var d = new FolderBrowserDialog())
+            {
+                d.Description = "选择包含工具文件的目录（会自动向下查找 bin/cmd 子目录）";
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                string found = FindInDir(d.SelectedPath, which);
+                if (string.IsNullOrEmpty(found))
+                {
+                    DarkDialog.Show(this, "在该目录下未找到对应工具。\n请选择工具所在的精确目录后重试。", "扫描目录", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (which == "node") cfg.NodePath = found;
+                else if (which == "npm") cfg.NpmPath = found;
+                else if (which == "git") cfg.GitPath = found;
+                else cfg.DshCommand = found;
+                cfg.Save();
+                RedetectNow();
+            }
+        }
+
+        static string FindInDir(string dir, string which)
+        {
+            string[] names;
+            if (which == "node") names = new string[] { "node.exe" };
+            else if (which == "npm") names = new string[] { "npm.cmd", "npm.exe" };
+            else if (which == "git") names = new string[] { "git.exe" };
+            else names = new string[] { "dsh.cmd", "dsh.exe", "dsh" };
+            var dirs = new List<string>();
+            dirs.Add(dir);
+            try
+            {
+                dirs.AddRange(Directory.GetDirectories(dir));
+                if (Directory.Exists(Path.Combine(dir, "bin"))) dirs.Add(Path.Combine(dir, "bin"));
+                if (Directory.Exists(Path.Combine(dir, "cmd"))) dirs.Add(Path.Combine(dir, "cmd"));
+            }
+            catch { }
+            foreach (string d0 in dirs)
+                foreach (string n in names)
+                {
+                    try { if (File.Exists(Path.Combine(d0, n))) return Path.Combine(d0, n); }
+                    catch { }
+                }
+            return "";
         }
 
         void OpenMirrorGit()
@@ -3071,6 +3499,7 @@ namespace DeepSeekHarness
 
             var worker = new Thread(delegate ()
             {
+                ResolveProxy();   // 探测本机代理(Clash 等)并注入子进程环境, 让 curl/npm/git 走代理
                 EnvInfo env = DetectEnvironment();
                 Program.DLog("startup", "detect done; node=" + env.NodePath + " npm=" + env.NpmPath + " git=" + env.GitPath + " dsh=" + env.DshPath + " v" + env.DshVersion);
                 currentEnv = env;
@@ -3105,6 +3534,9 @@ namespace DeepSeekHarness
                 {
                     Ui(delegate { ContinueAfterCheck(); });
                 }
+
+                // 商城预热: 后台拉取插件列表并写入本地缓存, 打开商城秒出结果 (傻瓜式, 无需手动点获取)
+                try { StoreForm.WarmUp(this); } catch { }
             });
             worker.IsBackground = true;
             worker.Start();
@@ -3211,13 +3643,18 @@ namespace DeepSeekHarness
             var env = new EnvInfo();
             try
             {
-                // dsh: where 优先, 失败则全 PATH(含注册表)扫描 —— 解决"刚装完未重启/新终端"检测不到的问题
-                string where = RunCapture("where", "dsh", 10000);
-                if (where != null)
+                // dsh: 手动配置的 DshCommand 若是文件路径则直接采用; 否则 where/扫描
+                if (cfg.DshCommand.IndexOf('\\') >= 0 && File.Exists(cfg.DshCommand))
+                    env.DshPath = cfg.DshCommand;
+                if (string.IsNullOrEmpty(env.DshPath))
                 {
-                    string[] lines = where.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (lines.Length > 0 && File.Exists(lines[0].Trim()))
-                        env.DshPath = lines[0].Trim();
+                    string where = RunCapture("where", "dsh", 10000);
+                    if (where != null)
+                    {
+                        string[] lines = where.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (lines.Length > 0 && File.Exists(lines[0].Trim()))
+                            env.DshPath = lines[0].Trim();
+                    }
                 }
                 if (string.IsNullOrEmpty(env.DshPath))
                     env.DshPath = FindTool("dsh.cmd", "dsh.exe", "dsh");
@@ -3231,12 +3668,20 @@ namespace DeepSeekHarness
                     if (m.Success) env.DshVersion = m.Groups[1].Value;
                 }
 
-                env.NpmPath = FirstLine(RunCapture("where", "npm", 10000));
+                // npm: 手动配置优先
+                if (!string.IsNullOrEmpty(cfg.NpmPath) && File.Exists(cfg.NpmPath)) env.NpmPath = cfg.NpmPath;
+                else env.NpmPath = FirstLine(RunCapture("where", "npm", 10000));
                 if (string.IsNullOrEmpty(env.NpmPath)) env.NpmPath = FindTool("npm.cmd", "npm.exe");
                 env.NpmVersion = FirstLine(RunCapture("cmd.exe", "/c npm --version", 15000));
-                env.GitPath = FindGit();
+
+                // git: 手动配置优先
+                if (!string.IsNullOrEmpty(cfg.GitPath) && File.Exists(cfg.GitPath)) env.GitPath = cfg.GitPath;
+                else env.GitPath = FindGit();
                 env.GitVersion = FirstLine(RunCapture("cmd.exe", "/c git --version", 15000));
-                env.NodePath = FindNode();
+
+                // node: 手动配置优先
+                if (!string.IsNullOrEmpty(cfg.NodePath) && File.Exists(cfg.NodePath)) env.NodePath = cfg.NodePath;
+                else env.NodePath = FindNode();
                 env.NodeVersion = FirstLine(RunCapture("cmd.exe", "/c node --version", 15000));
 
                 env.DshHomeExists = Directory.Exists(cfg.DshHome);
@@ -3466,19 +3911,20 @@ namespace DeepSeekHarness
             return null;
         }
 
-        static bool DownloadFile(string url, string dest)
+        bool DownloadFile(string url, string dest)
         {
             try
             {
                 using (var wc = new WebClient())
                 {
+                    var wp = CurrentWebProxy();
+                    if (wp != null) wc.Proxy = wp;
                     wc.DownloadFile(url, dest);
                 }
                 return true;
             }
             catch { return false; }
         }
-
         static void AddUserPath(string dir)
         {
             try
@@ -4117,6 +4563,16 @@ namespace DeepSeekHarness
             cfg.LogDir = setLog.Text.Trim();
             cfg.NpmPackage = setNpm.Text.Trim();
             cfg.LauncherUpdateUrl = setLupUrl.Text.Trim();
+            cfg.Proxy = setProxy.Text.Trim();
+            if (!string.IsNullOrEmpty(cfg.Proxy))
+            {
+                try
+                {
+                    Environment.SetEnvironmentVariable("HTTP_PROXY", cfg.Proxy);
+                    Environment.SetEnvironmentVariable("HTTPS_PROXY", cfg.Proxy);
+                }
+                catch { }
+            }
             string newLang = (setLang.SelectedIndex == 1) ? "zh" : (setLang.SelectedIndex == 2 ? "en" : "");
             bool langChanged = (Lang.Code != Lang.Resolve(newLang));
             cfg.Language = newLang;
@@ -4362,6 +4818,98 @@ namespace DeepSeekHarness
             return r;
         }
 
+        // ---- 代理: 多级自动探测(手动配置 → 环境变量 → Windows 系统代理 → 常见端口扫描), 统一注入子进程 ----
+        static readonly string[] ProxyPorts = { "7890", "7897", "7891", "7892", "7893", "7894", "7895", "7896", "10809", "10808", "1080", "8118", "2080", "8888", "1087" };
+        string detectedProxy;
+        bool proxyChecked;
+
+        bool TestProxy(string p)
+        {
+            if (string.IsNullOrEmpty(p)) return false;
+            if (p.IndexOf("://") < 0) p = "http://" + p;
+            return RunCapture("curl.exe", "-x " + p + " -s -m 3 https://api.github.com/zen", 6000) != null;
+        }
+
+        public string ResolveProxy()
+        {
+            if (!string.IsNullOrEmpty(cfg.Proxy))
+            {
+                if (TestProxy(cfg.Proxy)) { ApplyProxy(cfg.Proxy); return cfg.Proxy; }
+                // 配置的代理失效则继续往下探测
+            }
+            if (proxyChecked) return detectedProxy;
+            proxyChecked = true;
+
+            // 1) 环境变量 (终端里已 export 的代理)
+            string env = Environment.GetEnvironmentVariable("HTTPS_PROXY");
+            if (string.IsNullOrEmpty(env)) env = Environment.GetEnvironmentVariable("HTTP_PROXY");
+            if (string.IsNullOrEmpty(env)) env = Environment.GetEnvironmentVariable("ALL_PROXY");
+            if (!string.IsNullOrEmpty(env) && TestProxy(env)) detectedProxy = env;
+
+            // 2) Windows 系统代理 (Clash 开"系统代理"时浏览器走的通道)
+            if (detectedProxy == null)
+            {
+                try
+                {
+                    using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings"))
+                    {
+                        if (k != null && Convert.ToInt32(k.GetValue("ProxyEnable", 0)) == 1)
+                        {
+                            string ps = k.GetValue("ProxyServer") as string;
+                            if (!string.IsNullOrEmpty(ps))
+                            {
+                                Match m = Regex.Match(ps, "(https?|socks)=([^;]+)");
+                                string host = m.Success ? m.Groups[2].Value.Trim() : ps.Trim();
+                                string scheme = m.Success ? (m.Groups[1].Value == "socks" ? "socks://" : "http://") : "http://";
+                                if (host.IndexOf("://") < 0) host = scheme + host;
+                                if (TestProxy(host)) detectedProxy = host;
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // 3) 常见本地代理端口扫描 (Clash/v2rayN/sing-box/privoxy 等)
+            if (detectedProxy == null)
+            {
+                foreach (string port in ProxyPorts)
+                {
+                    string p = "http://127.0.0.1:" + port;
+                    if (TestProxy(p)) { detectedProxy = p; break; }
+                }
+            }
+
+            if (detectedProxy != null)
+            {
+                Program.DLog("proxy", "detected " + detectedProxy);
+                ApplyProxy(detectedProxy);
+                if (string.IsNullOrEmpty(cfg.Proxy))
+                {
+                    cfg.Proxy = detectedProxy;
+                    try { cfg.Save(); } catch { }
+                }
+            }
+            return detectedProxy;
+        }
+
+        void ApplyProxy(string p)
+        {
+            try
+            {
+                // curl/npm/git 子进程自动读取这两个环境变量走代理
+                Environment.SetEnvironmentVariable("HTTP_PROXY", p);
+                Environment.SetEnvironmentVariable("HTTPS_PROXY", p);
+            }
+            catch { }
+        }
+
+        public WebProxy CurrentWebProxy()
+        {
+            string p = ResolveProxy();
+            return string.IsNullOrEmpty(p) ? null : new WebProxy(p);
+        }
+
         // ============ 关闭 ============
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
@@ -4376,4 +4924,841 @@ namespace DeepSeekHarness
             try { tray.Visible = false; } catch { }
         }
     }
+
+    // ============ 轻量 HTTP 助手: 自动代理 + 智能编码 (UTF-8/GBK), 杜绝中文乱码 ============
+    static class SmartHttp
+    {
+        public static byte[] Get(string url, string proxy, int timeoutMs)
+        {
+            try
+            {
+                var req = (HttpWebRequest)WebRequest.Create(url);
+                req.UserAgent = "dsh-launcher";
+                req.Accept = "*/*";
+                req.Timeout = timeoutMs;
+                req.ReadWriteTimeout = timeoutMs;
+                if (!string.IsNullOrEmpty(proxy)) req.Proxy = new WebProxy(proxy);
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                using (var s = resp.GetResponseStream())
+                using (var ms = new MemoryStream())
+                {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = s.Read(buf, 0, buf.Length)) > 0) ms.Write(buf, 0, n);
+                    return ms.ToArray();
+                }
+            }
+            catch { return null; }
+        }
+
+        // 严格 UTF-8 校验 → UTF-8; 否则按 GBK 解码 (国内镜像/老仓库常为 GBK), 两者都失败回退 UTF-8
+        public static string Decode(byte[] b)
+        {
+            if (b == null || b.Length == 0) return "";
+            if (b.Length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF)
+            {
+                byte[] t = new byte[b.Length - 3];
+                Array.Copy(b, 3, t, 0, t.Length);
+                b = t;
+            }
+            if (IsUtf8(b)) return Encoding.UTF8.GetString(b);
+            try { return Encoding.GetEncoding(936).GetString(b); } catch { }
+            try { return Encoding.UTF8.GetString(b); } catch { }
+            return "";
+        }
+
+        static bool IsUtf8(byte[] b)
+        {
+            int i = 0;
+            while (i < b.Length)
+            {
+                byte c = b[i];
+                if (c < 0x80) { i++; continue; }
+                if (c >= 0xC2 && c <= 0xDF) { if (i + 1 >= b.Length || (b[i + 1] & 0xC0) != 0x80) return false; i += 2; continue; }
+                if (c >= 0xE0 && c <= 0x0EF) { if (i + 2 >= b.Length || (b[i + 1] & 0xC0) != 0x80 || (b[i + 2] & 0xC0) != 0x80) return false; i += 3; continue; }
+                if (c >= 0xF0 && c <= 0xF4) { if (i + 3 >= b.Length || (b[i + 1] & 0xC0) != 0x80 || (b[i + 2] & 0xC0) != 0x80 || (b[i + 3] & 0xC0) != 0x80) return false; i += 4; continue; }
+                return false;
+            }
+            return true;
+        }
+    }
+
+    // ============ 商城本地小缓存 (秒开列表, 后台静默刷新) ============
+    static class StoreCache
+    {
+        const int ListTtlSec = 6 * 3600;      // 列表缓存 6 小时
+
+        static string Dir()
+        {
+            string d = Path.Combine(Path.GetTempPath(), "dsh-launcher-cache");
+            try { Directory.CreateDirectory(d); } catch { }
+            return d;
+        }
+
+        public static void SaveList(List<StoreItem> items)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.Append("{\"t\":").Append(DateTime.UtcNow.Ticks).Append(",\"items\":[");
+                for (int i = 0; i < items.Count; i++)
+                {
+                    var it = items[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append("{\"f\":\"").Append(J(it.FullName)).Append("\",\"n\":\"").Append(J(it.Name))
+                      .Append("\",\"u\":\"").Append(J(it.Url)).Append("\",\"d\":\"").Append(J(it.Desc))
+                      .Append("\",\"s\":").Append(it.Stars).Append(",\"l\":\"").Append(J(it.Lang))
+                      .Append("\",\"b\":\"").Append(J(it.Branch)).Append("\",\"p\":\"").Append(J(it.Pushed)).Append("\"}");
+                }
+                sb.Append("]}");
+                File.WriteAllText(Path.Combine(Dir(), "store.json"), sb.ToString(), Encoding.UTF8);
+                Program.DLog("store", "cache saved " + items.Count + " items");
+            }
+            catch { }
+        }
+
+        // 返回缓存列表; ageSec = 缓存年龄(秒), 无缓存返回 null
+        public static List<StoreItem> LoadList(out long ageSec)
+        {
+            ageSec = long.MaxValue;
+            try
+            {
+                string f = Path.Combine(Dir(), "store.json");
+                if (!File.Exists(f)) return null;
+                string json = File.ReadAllText(f, Encoding.UTF8);
+                Match tm = Regex.Match(json, "\"t\":(\\d+)");
+                long ticks;
+                if (tm.Success && long.TryParse(tm.Groups[1].Value, out ticks))
+                    ageSec = Math.Max(0, (DateTime.UtcNow.Ticks - ticks) / TimeSpan.TicksPerSecond);
+                var list = new List<StoreItem>();
+                foreach (Match m in Regex.Matches(json, "\\{\"f\":\"(.*?)\",\"n\":\"(.*?)\",\"u\":\"(.*?)\",\"d\":\"(.*?)\",\"s\":(-?\\d+),\"l\":\"(.*?)\",\"b\":\"(.*?)\"(?:,\"p\":\"(.*?)\")?\\}"))
+                {
+                    var it = new StoreItem
+                    {
+                        FullName = UJ(m.Groups[1].Value),
+                        Name = UJ(m.Groups[2].Value),
+                        Url = UJ(m.Groups[3].Value),
+                        Desc = UJ(m.Groups[4].Value),
+                        Lang = UJ(m.Groups[6].Value),
+                        Branch = UJ(m.Groups[7].Value),
+                        Pushed = UJ(m.Groups[8].Value),
+                        Stars = -1
+                    };
+                    int.TryParse(m.Groups[5].Value, out it.Stars);
+                    list.Add(it);
+                }
+                return list.Count > 0 ? list : null;
+            }
+            catch { return null; }
+        }
+
+        public static int ListTtl() { return ListTtlSec; }
+
+        // 缓存为机器可读格式: 引号替换为单引号, 换行折叠, 保证 Regex 可解析
+        static string J(string s)
+        {
+            return (s ?? "").Replace('"', '\'').Replace("\r", " ").Replace("\n", " ").Replace("\\", "/");
+        }
+
+        static string UJ(string s) { return s ?? ""; }
+    }
+
+    // ============ 现代输入框 (圆角深色 + 占位提示 + 聚焦蓝色描边, 纯自绘零依赖) ============
+    class ModernTextBox : Control
+    {
+        TextBox inner;
+        bool focused;
+        bool hover;
+        int Pad { get { return (int)Math.Round(12 * DshTheme.S); } }
+        int Rad { get { return (int)Math.Round(9 * DshTheme.S); } }
+
+        public string Placeholder = "";
+
+        public ModernTextBox()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            Cursor = Cursors.IBeam;
+            inner = new TextBox
+            {
+                BorderStyle = BorderStyle.None,
+                BackColor = DshTheme.BgInput,
+                ForeColor = Color.White,
+                Font = DshFonts.Body,
+                Multiline = false
+            };
+            inner.GotFocus += delegate { focused = true; Invalidate(); };
+            inner.LostFocus += delegate { focused = false; Invalidate(); };
+            inner.TextChanged += delegate
+            {
+                Invalidate();
+                if (TextChanged != null) TextChanged(this, EventArgs.Empty);
+            };
+            Controls.Add(inner);
+            LayoutInner();
+            MouseEnter += delegate { hover = true; Invalidate(); };
+            MouseLeave += delegate { hover = false; Invalidate(); };
+            Click += delegate { inner.Focus(); };
+        }
+
+        public override string Text
+        {
+            get { return inner.Text; }
+            set { inner.Text = value; Invalidate(); }
+        }
+
+        public new event EventHandler TextChanged;
+
+        void LayoutInner()
+        {
+            int ph = Font.Height + 10;
+            inner.Location = new Point(Pad, Math.Max(0, (Height - ph) / 2));
+            inner.Width = Math.Max(10, Width - Pad * 2);
+            inner.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            LayoutInner();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e) { }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var p = Program.RoundRectPath(rect, Rad))
+            {
+                using (var b = new SolidBrush(DshTheme.BgInput)) g.FillPath(b, p);
+                Color bc = focused ? DshTheme.Blue : (hover ? DshTheme.Border : DshTheme.BorderSoft);
+                using (var pen = new Pen(bc, focused ? 1.6f : 1f)) g.DrawPath(pen, p);
+            }
+            if (inner.Text.Length == 0 && !focused && Placeholder.Length > 0)
+            {
+                using (var b = new SolidBrush(DshTheme.TextFaint))
+                using (var sf = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter })
+                    g.DrawString(Placeholder, DshFonts.Body, b, new RectangleF(Pad + 2, 0, Math.Max(1, Width - Pad * 2 - 4), Height), sf);
+            }
+        }
+    }
+
+    // ============ 现代下拉框 (圆角深色自绘 + 深色圆角弹出列表, 告别原生直角白底) ============
+    class ModernDropdown : Control
+    {
+        string[] items = new string[0];
+        bool hover;
+        DropdownPopup popup;
+        DateTime lastClose = DateTime.MinValue;
+        int Pad { get { return (int)Math.Round(12 * DshTheme.S); } }
+        int Rad { get { return (int)Math.Round(9 * DshTheme.S); } }
+
+        public int SelectedIndex = -1;
+
+        public string SelectedItem
+        {
+            get { return (SelectedIndex >= 0 && SelectedIndex < items.Length) ? items[SelectedIndex] : ""; }
+        }
+
+        public event EventHandler SelectionChanged;
+
+        public ModernDropdown()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Hand;
+            MouseEnter += delegate { hover = true; Invalidate(); };
+            MouseLeave += delegate { hover = false; Invalidate(); };
+        }
+
+        public string[] Items { get { return items; } }
+
+        public void SetItems(string[] arr, int sel)
+        {
+            items = (arr == null) ? new string[0] : (string[])arr.Clone();
+            SelectedIndex = (items.Length > 0) ? Math.Min(Math.Max(0, sel), items.Length - 1) : -1;
+            Invalidate();
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            base.OnClick(e);
+            if ((DateTime.Now - lastClose).TotalMilliseconds < 350) return;   // 点击外部关闭时抑制立即重开
+            if (popup != null && !popup.IsDisposed) { popup.Close(); return; }
+            if (items.Length == 0) return;
+            popup = new DropdownPopup(this);
+            popup.FormClosed += delegate { popup = null; lastClose = DateTime.Now; };
+            popup.Show();
+        }
+
+        internal void Pick(int i)
+        {
+            if (i >= 0 && i < items.Length)
+            {
+                SelectedIndex = i;
+                Invalidate();
+                if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty);
+            }
+            if (popup != null && !popup.IsDisposed) popup.Close();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e) { }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var p = Program.RoundRectPath(rect, Rad))
+            {
+                using (var b = new SolidBrush(DshTheme.BgInput)) g.FillPath(b, p);
+                bool open = (popup != null && !popup.IsDisposed);
+                Color bc = open ? DshTheme.Blue : (hover ? DshTheme.Border : DshTheme.BorderSoft);
+                using (var pen = new Pen(bc, open ? 1.6f : 1f)) g.DrawPath(pen, p);
+            }
+            using (var sf = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter })
+                g.DrawString(SelectedItem, DshFonts.Body, Brushes.White, new RectangleF(Pad, 0, Math.Max(1, Width - Pad - Px(22)), Height), sf);
+            using (var b = new SolidBrush(DshTheme.TextDim))
+            using (var sf2 = new StringFormat { LineAlignment = StringAlignment.Center, Alignment = StringAlignment.Far })
+                g.DrawString("▾", DshFonts.Body, b, new RectangleF(Width - Px(24), 0, Px(18), Height), sf2);
+        }
+
+        int Px(int v) { return (int)Math.Round(v * DshTheme.S); }
+    }
+
+    // 下拉弹出列表 (无边框深色圆角小窗)
+    class DropdownPopup : Form
+    {
+        ModernDropdown owner;
+
+        public DropdownPopup(ModernDropdown ctl)
+        {
+            owner = ctl;
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            BackColor = DshTheme.BgCard;
+            KeyPreview = true;
+            int rowH = (int)Math.Round(34 * DshTheme.S);
+            int pad = (int)Math.Round(8 * DshTheme.S);
+            int w = ctl.Width;
+            foreach (string s in ctl.Items)
+                w = Math.Max(w, TextRenderer.MeasureText(s, DshFonts.Body).Width + (int)Math.Round(44 * DshTheme.S));
+            Size = new Size(w, ctl.Items.Length * rowH + pad * 2);
+
+            var panel = new BufPanel { Dock = DockStyle.Fill, BackColor = DshTheme.BgCard, Padding = new Padding(pad) };
+            var stack = new StackPanel { Dock = DockStyle.Fill };
+            stack.Gap = 2;
+            stack.PadLeft = 0;
+            stack.BeginAdd();
+            for (int i = 0; i < ctl.Items.Length; i++)
+            {
+                int idx = i;
+                var lbl = new Label
+                {
+                    Text = ctl.Items[i],
+                    AutoSize = false,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    ForeColor = (i == ctl.SelectedIndex) ? DshTheme.Blue : DshTheme.TextMain,
+                    BackColor = Color.Transparent,
+                    Font = DshFonts.Body,
+                    Cursor = Cursors.Hand,
+                    Padding = new Padding((int)Math.Round(10 * DshTheme.S), 0, 0, 0)
+                };
+                lbl.MouseEnter += delegate { lbl.BackColor = Color.FromArgb(255, 34, 42, 62); };
+                lbl.MouseLeave += delegate { lbl.BackColor = Color.Transparent; };
+                lbl.Click += delegate { owner.Pick(idx); };
+                stack.Add(lbl, rowH);
+            }
+            panel.Controls.Add(stack);
+            Controls.Add(panel);
+            var oldRegion = Region;
+            Region = new Region(Program.RoundRectPath(new Rectangle(0, 0, Width, Height), (int)Math.Round(12 * DshTheme.S)));
+            if (oldRegion != null) oldRegion.Dispose();
+            Deactivate += delegate { Close(); };
+            KeyDown += delegate(object s, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) Close(); };
+            Shown += delegate { Position(); };
+        }
+
+        void Position()
+        {
+            var p = owner.PointToScreen(new Point(0, owner.Height + 3));
+            var wa = Screen.FromPoint(p).WorkingArea;
+            if (p.Y + Height > wa.Bottom) p = owner.PointToScreen(new Point(0, -Height - 3));
+            if (p.X + Width > wa.Right) p.X = wa.Right - Width;
+            if (p.X < wa.Left) p.X = wa.Left;
+            Location = p;
+        }
+    }
+
+    // ============ 插件商城独立窗口 ============
+    class StoreForm : Form
+    {
+        LauncherForm owner;
+        ModernTextBox search;
+        ModernDropdown sort;
+        ModernDropdown langFilter;
+        ModernButton fetchBtn;
+        Label note;
+        StackPanel list;
+        List<StoreItem> items = new List<StoreItem>();
+        bool loading;
+        bool dragging;
+        Point dragStart;
+        Timer retryTimer;
+        bool pending;
+        int autoTries;
+
+        // 启动时预热: 后台拉好列表写入缓存, 打开商城秒出结果 (无需手动点获取)
+        public static List<StoreItem> WarmList;
+        static bool warmed;
+
+        int P(int v) { return (int)Math.Round(v * DshTheme.S); }
+
+        // 无边框窗口: 边缘出现缩放指针并支持拖拽调整大小 (WM_NCHITTEST)
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if (m.Msg == 0x84)
+            {
+                int x = unchecked((short)((long)m.LParam & 0xFFFF));
+                int y = unchecked((short)(((long)m.LParam >> 16) & 0xFFFF));
+                Point pt = PointToClient(new Point(x, y));
+                int b = P(6);
+                bool top = pt.Y <= b, left = pt.X <= b, right = pt.X >= ClientSize.Width - b, bottom = pt.Y >= ClientSize.Height - b;
+                if (top && left) m.Result = (IntPtr)13;
+                else if (top && right) m.Result = (IntPtr)14;
+                else if (bottom && left) m.Result = (IntPtr)16;
+                else if (bottom && right) m.Result = (IntPtr)17;
+                else if (top) m.Result = (IntPtr)12;
+                else if (left) m.Result = (IntPtr)10;
+                else if (right) m.Result = (IntPtr)11;
+                else if (bottom) m.Result = (IntPtr)15;
+            }
+        }
+
+        public StoreForm(LauncherForm ownerForm)
+        {
+            owner = ownerForm;
+            Text = Lang.T("插件商城");
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.CenterParent;
+            ShowInTaskbar = false;
+            BackColor = DshTheme.Bg;
+            int w = P(820), h = P(620);
+            try
+            {
+                var wa = Screen.PrimaryScreen.WorkingArea;
+                w = Math.Min(w, wa.Width - 40);
+                h = Math.Min(h, wa.Height - 40);
+            }
+            catch { }
+            Size = new Size(Math.Max(P(560), w), Math.Max(P(440), h));
+            MinimumSize = new Size(P(560), P(440));
+            KeyPreview = true;
+            KeyDown += delegate(object s, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) Close(); };
+            BuildUi();
+            retryTimer = new Timer();
+            retryTimer.Interval = 15000;
+            retryTimer.Tick += delegate { retryTimer.Stop(); FetchList(true); };
+            Shown += delegate
+            {
+                long age;
+                var cached = StoreCache.LoadList(out age);
+                var seed = WarmList ?? cached;
+                if (seed != null && seed.Count > 0)
+                {
+                    items = seed;
+                    note.Text = string.Format(Lang.T("共 {0} 个插件 · 数据来自 GitHub"), seed.Count) + " · " + Lang.T("缓存");
+                    note.ForeColor = DshTheme.TextFaint;
+                    BuildLangFilter();
+                    Render();
+                }
+                // 始终后台静默刷新: 有缓存先显示缓存, 拉取成功后自动替换 —— 傻瓜式, 无需手动点获取
+                FetchList(true);
+            };
+        }
+
+        public static void WarmUp(LauncherForm owner)
+        {
+            if (warmed) return;
+            warmed = true;
+            var t = new Thread(delegate()
+            {
+                try
+                {
+                    long age;
+                    var cached = StoreCache.LoadList(out age);
+                    if (cached != null && cached.Count > 0 && age <= StoreCache.ListTtl())
+                    {
+                        WarmList = cached;
+                        Program.DLog("store", "warm: cache hit " + cached.Count);
+                        return;
+                    }
+                    string proxy = null;
+                    try { proxy = owner.ResolveProxy(); } catch { }
+                    var got = Fetch(proxy);
+                    if (got != null && got.Count > 0)
+                    {
+                        WarmList = got;
+                        StoreCache.SaveList(got);
+                        Program.DLog("store", "warm: fetched " + got.Count);
+                    }
+                    else
+                    {
+                        Program.DLog("store", "warm: fetch empty");
+                    }
+                }
+                catch { }
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        // 拉取插件列表: GitHub API(星标/语言/日期) → jsDelivr 精选列表兜底; 全程自动代理 + 自动编码
+        public static List<StoreItem> Fetch(string proxy)
+        {
+            var got = new List<StoreItem>();
+            string json = null;
+            try
+            {
+                byte[] b = SmartHttp.Get("https://api.github.com/search/repositories?q=topic%3Adsh-plugin&sort=stars&order=desc&per_page=100", proxy, 20000);
+                if (b != null) json = SmartHttp.Decode(b);
+            }
+            catch { }
+            if (!string.IsNullOrEmpty(json)) got = LauncherForm.ParseStoreJson(json);
+            if (got.Count == 0)
+            {
+                string[] mdUrls = {
+                    "https://cdn.jsdelivr.net/gh/bruc3van/awesome-dsh-plugin@main/README.md",
+                    "https://cdn.jsdelivr.net/gh/0xsline/awesome-deepseek-harness@main/README.md"
+                };
+                foreach (string u in mdUrls)
+                {
+                    string md = null;
+                    try { byte[] b = SmartHttp.Get(u, proxy, 15000); if (b != null) md = SmartHttp.Decode(b); } catch { }
+                    got = LauncherForm.ParseMdList(md);
+                    if (got.Count > 0) break;
+                }
+            }
+            return got;
+        }
+
+        void BuildUi()
+        {
+            // ---- 标题栏 ----
+            var titleBar = new Panel { Dock = DockStyle.Top, Height = P(42), BackColor = DshTheme.BgDeep };
+            titleBar.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (var pen = new Pen(DshTheme.BorderSoft, 1f))
+                    e.Graphics.DrawLine(pen, 0, titleBar.Height - 1, titleBar.Width, titleBar.Height - 1);
+            };
+            var icon = new Label { Text = "🛍", AutoSize = true, Left = P(16), Top = P(8), ForeColor = Color.White, BackColor = Color.Transparent, Font = DshFonts.BodyBold };
+            var title = new Label { Text = Lang.T("插件商城"), AutoSize = true, Left = P(50), Top = P(10), ForeColor = Color.White, BackColor = Color.Transparent, Font = DshFonts.BodyBold };
+            var close = new Label { Text = "✕", AutoSize = false, Width = P(40), Height = P(30), Top = P(6), TextAlign = ContentAlignment.MiddleCenter, ForeColor = DshTheme.TextDim, BackColor = Color.Transparent, Font = DshFonts.Body, Cursor = Cursors.Hand };
+            close.MouseEnter += delegate { close.ForeColor = DshTheme.Error; };
+            close.MouseLeave += delegate { close.ForeColor = DshTheme.TextDim; };
+            close.Click += delegate { Close(); };
+            titleBar.MouseDown += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) { dragging = true; dragStart = e.Location; } };
+            titleBar.MouseMove += delegate(object s, MouseEventArgs e) { if (dragging) Location = new Point(Left + e.X - dragStart.X, Top + e.Y - dragStart.Y); };
+            titleBar.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
+            titleBar.Controls.Add(icon);
+            titleBar.Controls.Add(title);
+            titleBar.Controls.Add(close);
+            titleBar.Resize += delegate { close.Left = titleBar.Width - close.Width - P(8); };
+
+            // ---- 工具栏: 搜索(多关键词模糊) + 排序 + 语言筛选 + 获取列表 + 打开网页 (状态文字自动换行) ----
+            var toolbar = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = P(78),
+                BackColor = DshTheme.Bg,
+                Padding = new Padding(P(14), P(8), P(14), 0),
+                WrapContents = true
+            };
+            search = new ModernTextBox
+            {
+                Width = P(220),
+                Height = P(34),
+                Placeholder = Lang.T("搜索插件…"),
+                Margin = new Padding(0, P(3), P(8), 0)
+            };
+            search.TextChanged += delegate { Render(); };
+            sort = new ModernDropdown
+            {
+                Width = P(140),
+                Height = P(34),
+                Margin = new Padding(0, P(3), P(8), 0)
+            };
+            sort.SetItems(new string[] { "★ " + Lang.T("按星标排序"), Lang.T("按名称排序"), Lang.T("默认顺序") }, 0);
+            sort.SelectionChanged += delegate { Render(); };
+            langFilter = new ModernDropdown
+            {
+                Width = P(116),
+                Height = P(34),
+                Margin = new Padding(0, P(3), P(8), 0)
+            };
+            langFilter.SetItems(new string[] { Lang.T("全部语言") }, 0);
+            langFilter.SelectionChanged += delegate { Render(); };
+            fetchBtn = MakeBtn("↻ " + Lang.T("获取列表"), P(96), P(34), true);
+            fetchBtn.Margin = new Padding(0, 0, P(8), 0);
+            fetchBtn.Click += delegate { FetchList(false); };
+            var webBtn = MakeBtn(Lang.T("打开网页"), P(96), P(34), false);
+            webBtn.Margin = new Padding(0, 0, P(8), 0);
+            webBtn.Click += delegate { try { Process.Start("https://github.com/topics/dsh-plugin"); } catch { } };
+            note = new Label
+            {
+                Text = "",
+                AutoSize = true,
+                ForeColor = DshTheme.TextFaint,
+                BackColor = Color.Transparent,
+                Font = DshFonts.Caption,
+                Margin = new Padding(P(2), P(9), 0, 0)
+            };
+            toolbar.Controls.AddRange(new Control[] { search, sort, langFilter, fetchBtn, webBtn, note });
+
+            // ---- 列表卡片 ----
+            var card = new RoundPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(P(10), P(6), P(10), P(10)),
+                Margin = new Padding(P(14), 0, P(14), P(14))
+            };
+            list = new StackPanel { Dock = DockStyle.Fill };
+            list.Gap = P(8);
+            list.PadLeft = P(2);
+            card.Controls.Add(list);
+
+            Controls.Add(card);
+            Controls.Add(toolbar);
+            Controls.Add(titleBar);
+        }
+
+        ModernButton MakeBtn(string text, int w, int h, bool primary)
+        {
+            return new ModernButton
+            {
+                Text = text,
+                Width = w,
+                Height = h,
+                Primary = primary,
+                ForeColor = primary ? Color.White : DshTheme.TextMain,
+                Font = DshFonts.Body
+            };
+        }
+
+        List<StoreItem> Sorted()
+        {
+            var l = new List<StoreItem>(items);
+            int mode = (sort == null ? 0 : sort.SelectedIndex);
+            if (mode == 0)
+                l.Sort(delegate(StoreItem a, StoreItem b) { return b.Stars.CompareTo(a.Stars); });
+            else if (mode == 1)
+                l.Sort(delegate(StoreItem a, StoreItem b) { return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase); });
+            return l;
+        }
+
+        // 语言筛选下拉: 根据当前列表动态生成 (全部语言 + 出现过的语言)
+        void BuildLangFilter()
+        {
+            if (langFilter == null) return;
+            var set = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var it in items)
+                if (!string.IsNullOrEmpty(it.Lang)) set.Add(it.Lang);
+            string prev = langFilter.SelectedItem;
+            var arr = new List<string>();
+            arr.Add(Lang.T("全部语言"));
+            foreach (string l in set) arr.Add(l);
+            int sel = 0;
+            for (int i = 0; i < arr.Count; i++)
+                if (string.Equals(arr[i], prev, StringComparison.OrdinalIgnoreCase)) { sel = i; break; }
+            langFilter.SetItems(arr.ToArray(), sel);
+        }
+
+        void Render()
+        {
+            if (list == null) return;
+            list.ClearAll();
+            list.BeginAdd();
+            // 多关键词模糊匹配: 空格分隔, 每个词都必须在 名称/简介/仓库名 中出现 (AND)
+            string raw = (search == null ? "" : search.Text.Trim().ToLowerInvariant());
+            string[] terms = raw.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            string langSel = (langFilter == null || langFilter.SelectedIndex <= 0) ? "" : langFilter.SelectedItem;
+            int shown = 0;
+            foreach (var it in Sorted())
+            {
+                if (!string.IsNullOrEmpty(langSel) && !string.Equals(it.Lang, langSel, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                bool ok = true;
+                for (int t = 0; t < terms.Length; t++)
+                {
+                    string term = terms[t];
+                    if (term.Length == 0) continue;
+                    if (it.Name.ToLowerInvariant().IndexOf(term) < 0
+                        && it.Desc.ToLowerInvariant().IndexOf(term) < 0
+                        && it.FullName.ToLowerInvariant().IndexOf(term) < 0
+                        && it.Lang.ToLowerInvariant().IndexOf(term) < 0)
+                    { ok = false; break; }
+                }
+                if (!ok) continue;
+                AddRow(it);
+                shown++;
+            }
+            if (items.Count == 0)
+            {
+                var empty = new Label
+                {
+                    Text = Lang.T("正在刷新…"),
+                    AutoSize = false,
+                    ForeColor = DshTheme.TextDim,
+                    BackColor = Color.Transparent,
+                    Font = DshFonts.Body
+                };
+                list.Add(empty, P(60));
+            }
+            else if (shown == 0)
+            {
+                var empty = new Label
+                {
+                    Text = Lang.T("没有匹配的插件，换个关键词试试"),
+                    AutoSize = false,
+                    ForeColor = DshTheme.TextDim,
+                    BackColor = Color.Transparent,
+                    Font = DshFonts.Body
+                };
+                list.Add(empty, P(60));
+            }
+        }
+
+        void AddRow(StoreItem it)
+        {
+            var row = new RoundPanel { BorderColor = DshTheme.BorderSoft };
+            var nameLbl = new Label
+            {
+                Text = it.Name,
+                AutoSize = false,
+                AutoEllipsis = true,
+                Location = new Point(P(14), P(8)),
+                ForeColor = Color.White,
+                BackColor = Color.Transparent,
+                Font = DshFonts.CardTitle
+            };
+            nameLbl.Width = P(160);
+            // 属性行: ★ 星标数 · 语言 · 最近更新日期
+            var meta = new StringBuilder();
+            if (it.Stars >= 0) meta.Append("★ ").Append(it.Stars);
+            if (!string.IsNullOrEmpty(it.Lang)) { if (meta.Length > 0) meta.Append(" · "); meta.Append(it.Lang); }
+            if (!string.IsNullOrEmpty(it.Pushed)) { if (meta.Length > 0) meta.Append(" · "); meta.Append(it.Pushed); }
+            var starLbl = new Label
+            {
+                Text = meta.Length > 0 ? meta.ToString() : "GitHub",
+                AutoSize = true,
+                Location = new Point(P(182), P(12)),
+                ForeColor = DshTheme.Warn,
+                BackColor = Color.Transparent,
+                Font = DshFonts.Body
+            };
+            var descLbl = new Label
+            {
+                Text = string.IsNullOrEmpty(it.Desc) ? it.FullName : it.Desc,
+                AutoSize = false,
+                AutoEllipsis = true,
+                Location = new Point(P(14), P(34)),
+                ForeColor = DshTheme.TextDim,
+                BackColor = Color.Transparent,
+                Font = DshFonts.MonoSmall
+            };
+            // 行内两个统一宽度按钮: 浏览(跳转仓库页) / 安装
+            var webBtn = MakeBtn("↗ " + Lang.T("浏览"), P(84), P(28), false);
+            var installBtn = MakeBtn("↓ " + Lang.T("安装"), P(84), P(28), true);
+            webBtn.Click += delegate { try { Process.Start(it.Url); } catch { } };
+            installBtn.Click += delegate { owner.InstallFromStore(it); };
+            row.Controls.Add(nameLbl);
+            row.Controls.Add(starLbl);
+            row.Controls.Add(descLbl);
+            row.Controls.Add(webBtn);
+            row.Controls.Add(installBtn);
+            row.Resize += delegate
+            {
+                int x = row.Width - P(12);
+                installBtn.Location = new Point(x - installBtn.Width, P(16)); x -= installBtn.Width + P(8);
+                webBtn.Location = new Point(x - webBtn.Width, P(16)); x -= webBtn.Width + P(8);
+                descLbl.Width = Math.Max(10, x - P(14));
+            };
+            list.Add(row, P(62));
+        }
+
+        void FetchList(bool silent)
+        {
+            if (loading) { pending = true; return; }   // 手动点击不丢失: 当前完成后自动再拉一次
+            loading = true;
+            if (!silent)
+            {
+                autoTries = 0;
+                retryTimer.Stop();
+                note.Text = Lang.T("正在获取插件列表…");
+                note.ForeColor = DshTheme.TextDim;
+                fetchBtn.Enabled = false;
+            }
+            string proxy = null;
+            try { proxy = owner.ResolveProxy(); } catch { }   // 全自动: 手动配置 → 环境变量 → 系统代理 → 端口扫描
+            var worker = new Thread(delegate()
+            {
+                var got = Fetch(proxy);
+                Ui(delegate
+                {
+                    loading = false;
+                    fetchBtn.Enabled = true;
+                    if (got.Count > 0)
+                    {
+                        // 数据质量优先: 当前是 GitHub API 数据(带星标/日期), 新结果是精选列表兜底 → 不降级替换
+                        bool gotIsMd = true;
+                        foreach (var x in got) if (x.Stars >= 0) { gotIsMd = false; break; }
+                        bool curIsApi = false;
+                        foreach (var x in items) if (x.Stars >= 0) { curIsApi = true; break; }
+                        if (!(gotIsMd && curIsApi))
+                        {
+                            items = got;
+                            StoreCache.SaveList(got);
+                            WarmList = got;
+                        }
+                        retryTimer.Stop();
+                        autoTries = 0;
+                        note.Text = string.Format(Lang.T("共 {0} 个插件 · 数据来自 GitHub"), items.Count);
+                        note.ForeColor = DshTheme.TextFaint;
+                        BuildLangFilter();
+                    }
+                    else if (items.Count > 0)
+                    {
+                        // 已有数据(缓存) 刷新失败: 保留现有列表, 稍后自动重试
+                        if (autoTries < 3) { autoTries++; retryTimer.Start(); }
+                        note.Text = string.Format(Lang.T("共 {0} 个插件 · 数据来自 GitHub"), items.Count) + " · " + Lang.T("缓存");
+                        note.ForeColor = DshTheme.Warn;
+                    }
+                    else
+                    {
+                        // 空列表且拉取失败 → 静默自动重试, 网络/代理就绪后自动填上
+                        if (autoTries < 3) { autoTries++; retryTimer.Start(); }
+                        note.Text = Lang.T("正在刷新…");
+                        note.ForeColor = DshTheme.TextDim;
+                    }
+                    Render();
+                    if (pending) { pending = false; FetchList(true); }
+                });
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
+        void Ui(Action a)
+        {
+            try { if (IsHandleCreated && !IsDisposed) BeginInvoke((MethodInvoker)delegate { a(); }); }
+            catch { }
+        }
+    }
+
 }
