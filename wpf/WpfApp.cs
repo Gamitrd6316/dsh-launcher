@@ -123,30 +123,22 @@ namespace DeepSeekHarness
             };
             var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
 
-            // 鲸鱼 Logo (嵌入资源, 失败则用 emoji 兜底)
-            var logo = new Border { Width = 92, Height = 92, CornerRadius = new CornerRadius(20), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Center };
-            var logoInner = new Border { CornerRadius = new CornerRadius(16), Margin = new Thickness(4), Background = Brushes.White };
-            logoInner.Child = new TextBlock { Text = "🐋", FontSize = 44, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            try
+            // 官方 DeepSeek Logo (嵌入资源, 失败则用鲸鱼白底兜底)
+            ImageSource logo = MainWindow.LoadEmbeddedPng("DeepSeekHarness.logo.png");
+            UIElement logoEl;
+            if (logo != null)
             {
-                var uri = new Uri("pack://application:,,,/DeepSeekHarness.whale-white.png");
-                var s = Application.GetResourceStream(uri);
-                if (s != null)
-                {
-                    using (s.Stream)
-                    {
-                        var bmp = new System.Windows.Media.Imaging.BitmapImage();
-                        bmp.BeginInit();
-                        bmp.StreamSource = s.Stream;
-                        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-                        bmp.EndInit();
-                        logoInner.Child = new System.Windows.Controls.Image { Source = bmp, Stretch = Stretch.Uniform };
-                    }
-                }
+                logoEl = new System.Windows.Controls.Image { Source = logo, Width = 88, Height = 88, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center };
             }
-            catch { }
-            logo.Child = logoInner;
-            stack.Children.Add(logo);
+            else
+            {
+                var logoBox = new Border { Width = 92, Height = 92, CornerRadius = new CornerRadius(20), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Center };
+                var logoInner = new Border { CornerRadius = new CornerRadius(16), Margin = new Thickness(4), Background = Brushes.White };
+                logoInner.Child = new TextBlock { Text = "🐋", FontSize = 44, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                logoBox.Child = logoInner;
+                logoEl = logoBox;
+            }
+            stack.Children.Add(logoEl);
             stack.Children.Add(new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 20, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0) });
             stack.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
             stack.Children.Add(new TextBlock { Text = "v1.5.0 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0) });
@@ -453,7 +445,7 @@ namespace DeepSeekHarness
         }
 
         // 嵌入 PNG → ImageSource (pack URI)
-        static ImageSource LoadEmbeddedPng(string name)
+        public static ImageSource LoadEmbeddedPng(string name)
         {
             try
             {
@@ -481,19 +473,24 @@ namespace DeepSeekHarness
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
 
             var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
-            var dot = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(8), Background = Palette.Brush(Palette.Blue), VerticalAlignment = VerticalAlignment.Center };
-            var whale = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
-            if (whale != null)
+            // 官方 DeepSeek Logo (青蓝渐变 + 线条鲸鱼), 与旧版一致
+            ImageSource logo = LoadEmbeddedPng("DeepSeekHarness.logo.png");
+            if (logo != null)
             {
-                dot.Child = new System.Windows.Controls.Image { Source = whale, Stretch = Stretch.Uniform, Margin = new Thickness(4) };
+                brand.Children.Add(new System.Windows.Controls.Image { Source = logo, Width = 26, Height = 26, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center });
             }
             else
             {
-                dot.Child = new TextBlock { Text = "🐋", FontSize = 14, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                var dot = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(8), Background = Palette.Brush(Palette.Blue), VerticalAlignment = VerticalAlignment.Center };
+                var whale = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
+                if (whale != null)
+                    dot.Child = new System.Windows.Controls.Image { Source = whale, Stretch = Stretch.Uniform, Margin = new Thickness(4) };
+                else
+                    dot.Child = new TextBlock { Text = "🐋", FontSize = 14, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                brand.Children.Add(dot);
             }
             var title = new TextBlock { Text = "DeepSeek Harness " + Lang.T("启动器"), Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             var sub = new TextBlock { Text = Lang.T("WPF 重构版"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, Margin = new Thickness(10, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            brand.Children.Add(dot);
             brand.Children.Add(title);
             brand.Children.Add(sub);
 
@@ -541,20 +538,31 @@ namespace DeepSeekHarness
             var sidebar = new Grid { Background = Palette.Brush(Palette.BgDeep) };
             sidebar.RowDefinitions.Add(new RowDefinition { Height = new GridLength(96) });  // 品牌块
             sidebar.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            sidebar.RowDefinitions.Add(new RowDefinition { Height = new GridLength(34) });  // 版本脚注
+            sidebar.RowDefinitions.Add(new RowDefinition { Height = new GridLength(56) });  // 版本脚注 (链接 + 版本两行)
 
             var brandRow = new StackPanel { Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             var brandLine = new StackPanel { Orientation = Orientation.Horizontal };
-            var logoBox = new Border { Width = 40, Height = 40, CornerRadius = new CornerRadius(11), Background = Palette.Brush(Palette.Blue), VerticalAlignment = VerticalAlignment.Center };
-            var whaleImg = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
-            if (whaleImg != null)
-                logoBox.Child = new System.Windows.Controls.Image { Source = whaleImg, Stretch = Stretch.Uniform, Margin = new Thickness(5) };
+            // 官方 DeepSeek Logo
+            ImageSource logo = LoadEmbeddedPng("DeepSeekHarness.logo.png");
+            UIElement logoEl;
+            if (logo != null)
+            {
+                logoEl = new System.Windows.Controls.Image { Source = logo, Width = 40, Height = 40, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center };
+            }
             else
-                logoBox.Child = new TextBlock { Text = "🐋", FontSize = 20, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            {
+                var logoBox = new Border { Width = 40, Height = 40, CornerRadius = new CornerRadius(11), Background = Palette.Brush(Palette.Blue), VerticalAlignment = VerticalAlignment.Center };
+                var whaleImg = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
+                if (whaleImg != null)
+                    logoBox.Child = new System.Windows.Controls.Image { Source = whaleImg, Stretch = Stretch.Uniform, Margin = new Thickness(5) };
+                else
+                    logoBox.Child = new TextBlock { Text = "🐋", FontSize = 20, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                logoEl = logoBox;
+            }
             var brandText = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             brandText.Children.Add(new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 15, FontWeight = FontWeights.Bold });
             brandText.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 11, Margin = new Thickness(0, 3, 0, 0) });
-            brandLine.Children.Add(logoBox);
+            brandLine.Children.Add(logoEl);
             brandLine.Children.Add(brandText);
             brandRow.Children.Add(brandLine);
 
