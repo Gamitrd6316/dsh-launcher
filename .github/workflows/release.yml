@@ -1,0 +1,21 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile with csc
+        shell: cmd
+        run: |
+          set CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+          "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /win32manifest:app.manifest /out:DeepSeekHarness.exe Launcher.cs
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DeepSeekHarness.exe
