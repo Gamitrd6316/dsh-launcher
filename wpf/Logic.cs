@@ -57,6 +57,8 @@ namespace DeepSeekHarness
             { "GitHub 项目主页", "GitHub project" },
             { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.5.0 (WPF)", "Port {0} · Launcher v1.5.0 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
+            { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
+            { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
         };
 
         public static void Set(string code)
