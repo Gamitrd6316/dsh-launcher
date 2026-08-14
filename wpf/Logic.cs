@@ -59,6 +59,9 @@ namespace DeepSeekHarness
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
+            { "重启服务", "Restart" }, { "滚轮滚动 · 完整日志在「日志」页", "Scroll · full log in Logs" },
+            { "桌面快捷方式", "Desktop Shortcut" }, { "检测代理", "Detect Proxy" }, { "选择文件", "Browse" },
+            { "服务已在运行", "Service running" },
         };
 
         public static void Set(string code)
@@ -907,6 +910,29 @@ namespace DeepSeekHarness
             worker.Start();
         }
 
+        public void RestartServiceAsync()
+        {
+            var worker = new Thread(delegate()
+            {
+                Report("正在停止服务…");
+                if (ServerProc != null && !ServerProc.HasExited)
+                {
+                    try { KillProcessTree(ServerProc.Id); } catch { }
+                    ServerProc = null;
+                }
+                else
+                {
+                    int pid = FindPidByPort(Cfg.Port);
+                    if (pid > 0) KillProcessTree(pid);
+                }
+                for (int i = 0; i < 20 && IsPortOpen(Cfg.Port); i++) Thread.Sleep(300);
+                Report("正在启动服务…");
+                StartServiceAsync();
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
         void Report(string s)
         {
             if (OnStatus != null) { try { OnStatus(s); } catch { } }
@@ -1272,6 +1298,33 @@ namespace DeepSeekHarness
             return s;
         }
 
+        // 桌面快捷方式 (WScript.Shell 反射创建)
+        public string CreateDesktopShortcut()
+        {
+            try
+            {
+                string lnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "DeepSeek Harness.lnk");
+                Type t = Type.GetTypeFromProgID("WScript.Shell");
+                object shell = Activator.CreateInstance(t);
+                object shortcut = t.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, shell, new object[] { lnk });
+                Type st = shortcut.GetType();
+                st.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { System.Reflection.Assembly.GetExecutingAssembly().Location });
+                st.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { AppDomain.CurrentDomain.BaseDirectory });
+                st.InvokeMember("Description", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { "DeepSeek Harness 启动器" });
+                try { st.InvokeMember("IconLocation", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "deepseek.ico") + ",0" }); } catch { }
+                st.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, shortcut, null);
+                return "";
+            }
+            catch (Exception ex) { return ex.Message; }
+        }
+
+        // 插件本地版本 (git 短哈希)
+        public string LocalHash(PluginItem p)
+        {
+            string r = RunGit(string.Format("-C \"{0}\" rev-parse --short HEAD", p.Path), 8000);
+            return string.IsNullOrEmpty(r) ? "" : r.Trim();
+        }
+
         // ---------- 插件操作 ----------
         public string InstallPluginFromUrl(string url)
         {
@@ -1318,11 +1371,28 @@ namespace DeepSeekHarness
         {
             try
             {
+                ClearReadOnly(p.Path);   // git 松散对象是只读文件, 必须先清除只读属性
                 Directory.Delete(p.Path, true);
                 Report("已卸载插件 " + p.Name);
                 return "";
             }
             catch (Exception ex) { return "目录可能被占用或权限不足：" + ex.Message; }
+        }
+
+        static void ClearReadOnly(string root)
+        {
+            try
+            {
+                foreach (string f in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
+                {
+                    try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
+                }
+                foreach (string d in Directory.GetDirectories(root, "*", SearchOption.AllDirectories))
+                {
+                    try { File.SetAttributes(d, FileAttributes.Normal); } catch { }
+                }
+            }
+            catch { }
         }
 
         public string PullPlugin(PluginItem p)
