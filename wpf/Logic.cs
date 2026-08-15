@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 · 逻辑层
 //  从 WinForms 版移植: 命令助手 / 配置 / 环境检测 / 代理 / 服务 / 插件 / 商城 / 更新
 //  全部 UI 无关; 通过 OnStatus / OnLog 回调向界面汇报
@@ -71,6 +71,7 @@ namespace DeepSeekHarness
             { "升级 dsh", "Upgrade dsh" }, { "dsh 已升级到最新版。", "dsh is now up to date." },
             { "依赖完整", "dependencies OK" }, { "缺依赖", "missing deps" }, { "修复依赖", "Fix deps" },
             { "插件已被隔离", "Plugins quarantined" },
+            { "关于", "About" },
             { "以下插件因缺少依赖被暂时禁用，服务已正常启动：", "These plugins were disabled due to missing deps; the service is running normally:" },
             { "修复后重启服务即可恢复。可在「插件」页一键修复依赖，或在 dsh 终端执行:", "Restart the service after fixing. Use the Plugins page or run in the dsh terminal:" }
         };
@@ -612,6 +613,14 @@ namespace DeepSeekHarness
                 }
                 catch { }
             }
+            // 网络类 git 操作自动附加代理参数 (git 不读系统代理, 需要显式 -c http.proxy)
+            string proxy = detectedProxy;
+            if (string.IsNullOrEmpty(proxy) && !string.IsNullOrEmpty(Cfg.Proxy)) proxy = Cfg.Proxy;
+            if (string.IsNullOrEmpty(proxy) && proxyChecked) proxy = detectedProxy;
+            if (!string.IsNullOrEmpty(proxy))
+            {
+                args = "-c http.proxy=\"" + proxy + "\" -c https.proxy=\"" + proxy + "\" " + args;
+            }
             string oldPath = Environment.GetEnvironmentVariable("Path");
             try { Environment.SetEnvironmentVariable("Path", prefix + oldPath); } catch { }
             string r = RunCapture(git, args, timeoutMs);
@@ -1148,30 +1157,17 @@ namespace DeepSeekHarness
                     {
                         if (!Directory.Exists(Path.Combine(dir, ".git"))) continue;
                         string name = Path.GetFileName(dir);
-                        // 按本地当前分支对比远程同名分支
+                        if (name.StartsWith("_", StringComparison.Ordinal)) continue;
                         string branch = FirstLine(RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", dir), 10000));
                         if (string.IsNullOrEmpty(branch)) continue;
-                        string remote = RunGit(string.Format("-C \"{0}\" ls-remote origin {1}", dir, branch), 20000);
-                        string local = RunGit(string.Format("-C \"{0}\" rev-parse HEAD", dir), 10000);
-                        if (remote != null && local != null)
-                        {
-                            string[] parts = remote.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                            string rh = parts.Length > 0 ? parts[0] : "";
-                            string lh = local.Trim();
-                            if (rh.Length >= 7 && !rh.Equals(lh, StringComparison.OrdinalIgnoreCase))
-                                names.Add(name);
-                            continue;
-                        }
-                        // 本地分支与远程无同名分支 (如本地 master / 远程 main): 对比远程默认分支 HEAD
-                        string remoteHead = RunGit(string.Format("-C \"{0}\" ls-remote origin HEAD", dir), 20000);
-                        if (remoteHead != null && local != null)
-                        {
-                            string[] hp = remoteHead.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                            string rhh = hp.Length > 0 ? hp[0] : "";
-                            string lh2 = local.Trim();
-                            if (rhh.Length >= 7 && !rhh.Equals(lh2, StringComparison.OrdinalIgnoreCase))
-                                names.Add(name);
-                        }
+                        // 精确判定: fetch 远程分支 → 计算本地落后提交数 (HEAD..FETCH_HEAD)
+                        // 只有"本地确实落后"才算可更新; 哈希不同但本地领先/分叉一律不算
+                        string fetched = RunGit(string.Format("-C \"{0}\" fetch origin {1}", dir, branch), 60000);
+                        if (fetched == null) continue;   // 网络不可达 → 跳过, 不误报
+                        string behind = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..FETCH_HEAD", dir), 10000);
+                        int n;
+                        if (behind != null && int.TryParse(behind.Trim(), out n) && n > 0)
+                            names.Add(name);
                     }
                 }
                 info.PluginCount = names.Count;
