@@ -257,7 +257,7 @@ namespace DeepSeekHarness
             stack.Children.Add(logoEl);
             stack.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 19, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) });
             stack.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF 旗舰版"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
-            stack.Children.Add(new TextBlock { Text = "v1.0.4 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
+            stack.Children.Add(new TextBlock { Text = "v1.0.5 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
             // 加载动画条
             var bar = new Border { Height = 4, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.BgInput), Margin = new Thickness(30, 16, 30, 0) };
             var fill = new Border { Width = 60, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Left };
@@ -388,6 +388,11 @@ namespace DeepSeekHarness
         TextBlock sbText, sbRight;
         Dsh dsh = new Dsh();
         TextBlock ovStatus, ovSub;
+        // 启动步骤指示器
+        StackPanel launchSteps;
+        Border[] launchStepDots = new Border[3];
+        TextBlock[] launchStepTbs = new TextBlock[3];
+        bool launchAnimActive = false;
         Button ovPrimary, ovStop, ovRestart;
         WrapPanel ovChips;
         TextBlock ovLog;
@@ -419,7 +424,7 @@ namespace DeepSeekHarness
         bool IsLauncherNewer()
         {
             Version cur, latest;
-            if (!Version.TryParse("1.0.4", out cur)) return false;
+            if (!Version.TryParse("1.0.5", out cur)) return false;
             if (!Version.TryParse(lupLatestStr, out latest)) return false;
             return latest > cur;
         }
@@ -715,7 +720,7 @@ namespace DeepSeekHarness
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            badge.Child = new TextBlock { Text = "v1.0.4", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
+            badge.Child = new TextBlock { Text = "v1.0.5", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
             brand.Children.Add(title);
             brand.Children.Add(badge);
 
@@ -861,7 +866,7 @@ namespace DeepSeekHarness
 
             sbRight = new TextBlock
             {
-                Text = "端口 8099 · 启动器 v1.0.4 (WPF)",
+                Text = "端口 8099 · 启动器 v1.0.5 (WPF)",
                 Foreground = Palette.Brush(Palette.TextFaint),
                 FontSize = 12,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -912,6 +917,37 @@ namespace DeepSeekHarness
             ovSub = new TextBlock { Text = Lang.T("正在检测环境与服务状态…"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 13, Margin = new Thickness(0, 6, 0, 0) };
             statusCol.Children.Add(ovStatus);
             statusCol.Children.Add(ovSub);
+
+            // 启动步骤指示器: 一键启动时逐步骤交代当前在干什么
+            launchSteps = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), Visibility = Visibility.Collapsed };
+            for (int s = 0; s < 3; s++)
+            {
+                var step = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 0) };
+                var dot = new Border
+                {
+                    Width = 16, Height = 16, CornerRadius = new CornerRadius(8),
+                    Background = Palette.Brush(Palette.BgInput),
+                    BorderBrush = Palette.Brush(Palette.BorderSoft),
+                    BorderThickness = new Thickness(1),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var dotTb = new TextBlock { Text = (s + 1).ToString(), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 10, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                dot.Child = dotTb;
+                step.Children.Add(dot);
+                var stepTb = new TextBlock
+                {
+                    Text = s == 0 ? Lang.T("检查插件") : (s == 1 ? Lang.T("启动服务") : Lang.T("就绪")),
+                    Foreground = Palette.Brush(Palette.TextFaint),
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(6, 0, 0, 0)
+                };
+                step.Children.Add(stepTb);
+                launchSteps.Children.Add(step);
+                launchStepDots[s] = dot;
+                launchStepTbs[s] = stepTb;
+            }
+            statusCol.Children.Add(launchSteps);
             ovPrimary = new Button
             {
                 Content = Lang.T("一键启动"),
@@ -1250,7 +1286,7 @@ namespace DeepSeekHarness
                 sbDot.Effect = running ? Palette.GlowEffect(Palette.Success, 0.7) : null;
                 sbText.Text = running ? Lang.T("服务已在运行") : Lang.T("服务未启动");
             }
-            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.4 (WPF)"), dsh.Cfg.Port);
+            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.5 (WPF)"), dsh.Cfg.Port);
             }
             catch { }
         }
@@ -1272,8 +1308,93 @@ namespace DeepSeekHarness
             bool dshOk = !string.IsNullOrEmpty(dsh.Env.DshPath);
             if (!nodeOk || !dshOk) { RunInstall(); return; }
             if (running) { dsh.OpenBrowser(); RenderOverview(); return; }
+            // 启动步骤动画: ①检查插件 → ②启动服务 → ③就绪
+            BeginLaunchSteps();
             dsh.StartServiceAsync();
             PollServiceState(true);
+        }
+
+        // 启动步骤动画驱动
+        void BeginLaunchSteps()
+        {
+            launchAnimActive = true;
+            if (launchSteps == null) return;
+            launchSteps.Visibility = Visibility.Visible;
+            SetLaunchStep(0, false);   // ① 检查插件 (进行中)
+            SetLaunchStep(1, false);
+            SetLaunchStep(2, false);
+            ovStatus.Text = "● " + Lang.T("正在启动…");
+            ovStatus.Foreground = Palette.Brush(Palette.BlueLight);
+            ovSub.Text = Lang.T("正在检查插件兼容性…");
+            // 步骤 ① 旋转动画 (进行中)
+            var rot = new RotateTransform(0);
+            launchStepDots[0].RenderTransform = rot;
+            launchStepDots[0].RenderTransformOrigin = new Point(0.5, 0.5);
+            var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900)) { RepeatBehavior = RepeatBehavior.Forever };
+            rot.BeginAnimation(RotateTransform.AngleProperty, spin);
+        }
+
+        void SetLaunchStep(int idx, bool done)
+        {
+            if (launchSteps == null || idx < 0 || idx > 2) return;
+            var dot = launchStepDots[idx];
+            var tb = launchStepTbs[idx];
+            if (dot == null || tb == null) return;
+            dot.RenderTransform = null;
+            if (done)
+            {
+                dot.Background = Palette.Brush(Palette.Success);
+                dot.BorderBrush = Palette.Brush(Palette.Success);
+                ((TextBlock)dot.Child).Text = "✓";
+                ((TextBlock)dot.Child).Foreground = Brushes.White;
+                tb.Foreground = Palette.Brush(Palette.Success);
+                tb.FontWeight = FontWeights.SemiBold;
+            }
+            else
+            {
+                dot.Background = Palette.Brush(Palette.BgInput);
+                dot.BorderBrush = Palette.Brush(Palette.BorderSoft);
+                ((TextBlock)dot.Child).Text = (idx + 1).ToString();
+                ((TextBlock)dot.Child).Foreground = Palette.Brush(Palette.TextFaint);
+                tb.Foreground = Palette.Brush(Palette.TextFaint);
+                tb.FontWeight = FontWeights.Normal;
+            }
+        }
+
+        // 步骤 ① 完成 → 进入 ② 启动服务
+        void AdvanceLaunchStep(int toStep)
+        {
+            if (!launchAnimActive) return;
+            if (toStep >= 1) SetLaunchStep(0, true);
+            if (toStep >= 2)
+            {
+                SetLaunchStep(1, true);
+                SetLaunchStep(2, true);
+                FinishLaunchSteps();
+                return;
+            }
+            // ② 启动服务 (进行中旋转)
+            ovSub.Text = Lang.T("正在启动服务，请稍候…");
+            var rot = new RotateTransform(0);
+            launchStepDots[1].RenderTransform = rot;
+            launchStepDots[1].RenderTransformOrigin = new Point(0.5, 0.5);
+            var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900)) { RepeatBehavior = RepeatBehavior.Forever };
+            rot.BeginAnimation(RotateTransform.AngleProperty, spin);
+        }
+
+        void FinishLaunchSteps()
+        {
+            if (!launchAnimActive) return;
+            launchAnimActive = false;
+            if (launchSteps == null) return;
+            // 停留片刻展示 ✓ 再隐藏
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+            timer.Tick += delegate
+            {
+                timer.Stop();
+                launchSteps.Visibility = Visibility.Collapsed;
+            };
+            timer.Start();
         }
 
         void RestartService()
@@ -1301,9 +1422,17 @@ namespace DeepSeekHarness
                 bool running = Dsh.IsPortOpen(dsh.Cfg.Port);
                 RenderOverview();
                 stable = (running == waitRunning) ? stable + 1 : 0;   // 端口状态连续 3 次(约1.8s)稳定才收敛
+                // 启动步骤动画联动: 端口一开就推进步骤
+                if (launchAnimActive && waitRunning && running)
+                    AdvanceLaunchStep(2);
                 if (stable >= 3 || ticks >= maxTicks)
                 {
                     timer.Stop();
+                    if (launchAnimActive && waitRunning)
+                    {
+                        if (running) AdvanceLaunchStep(2);
+                        else FinishLaunchSteps();   // 启动失败也收起动画, 状态栏会显示失败
+                    }
                     RenderOverview();
                 }
             };
@@ -1957,7 +2086,7 @@ namespace DeepSeekHarness
             lupTitleRow.Children.Add(new TextBlock { Text = "🚀 ", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
             lupTitleRow.Children.Add(new TextBlock { Text = Lang.T("启动器") + " (Launcher)", Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             lupCol.Children.Add(lupTitleRow);
-            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.4", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.5", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
             upLupLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
             upLupNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
             lupCol.Children.Add(upLupCur);
@@ -2415,7 +2544,7 @@ namespace DeepSeekHarness
             }
             var headText = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
             headText.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 16, FontWeight = FontWeights.Bold });
-            headText.Children.Add(new TextBlock { Text = "v1.0.4 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
+            headText.Children.Add(new TextBlock { Text = "v1.0.5 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
             head.Children.Add(headText);
             Grid.SetRow(head, 0);
             g.Children.Add(head);
@@ -2784,7 +2913,7 @@ namespace DeepSeekHarness
                 // 头部小标题
                 var head = new Grid { Margin = new Thickness(10, 3, 10, 4) };
                 var headTitle = new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 11, FontWeight = FontWeights.Bold };
-                var headVer = new TextBlock { Text = "v1.0.4", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
+                var headVer = new TextBlock { Text = "v1.0.5", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
                 head.Children.Add(headTitle);
                 head.Children.Add(headVer);
                 stack.Children.Add(head);
