@@ -2,7 +2,7 @@
 
 > The fool-proof launcher for DeepSeek Harness (dsh): **double-click to run, one click to install, update and maintain** — Node.js, dsh and plugins all taken care of, with China mirror fallbacks.
 
-[English](README.md) | [中文](README.zh.md)
+[English](README.md) | [中文](README.zh.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md)
 
 [![dsh-launcher](https://img.shields.io/badge/dsh--launcher-%E2%9C%93-4D6BFE?style=flat-square)](https://github.com/topics/dsh-launcher)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-blue?style=flat-square&logo=windows)](../../releases)
@@ -11,17 +11,19 @@
 
 ## Screenshots
 
-| Overview | Plugins |
+| Overview (EN) | Plugins (EN) |
 |---|---|
-| ![Overview](./docs/images/overview.png) | ![Plugins](./docs/images/plugins.png) |
+| ![Overview](./docs/images/overview-en.png) | ![Plugins](./docs/images/plugins-en.png) |
 
-| Updates | Settings |
+| Updates (EN) | Settings (EN) |
 |---|---|
-| ![Updates](./docs/images/updates.png) | ![Settings](./docs/images/settings.png) |
+| ![Updates](./docs/images/updates-en.png) | ![Settings](./docs/images/settings-en.png) |
 
-| Plugin Store |
-|---|
-| ![Plugin Store](./docs/images/store.png) |
+| Plugin Store (EN) | Logs (EN) |
+|---|---|
+| ![Plugin Store](./docs/images/store-en.png) | ![Logs](./docs/images/logs-en.png) |
+
+**Other languages:** [中文界面](./docs/images/overview.png) · [日本語](./docs/images/overview-ja.png) · [한국어](./docs/images/overview-ko.png) · [Русский](./docs/images/overview-ru.png)
 
 ## Why this launcher
 
@@ -48,7 +50,7 @@ double-click → splash → click "Install" → grab a coffee → click "Start" 
 - 🧩 **Plugin Manager** — install via **git URL** or **npm package name**; per-plugin smart update (only pulls when the remote truly has new commits — no false "failed" on up-to-date repos), remove, enable/disable, one-click maintain (update all + fix deps)
 - 🛍️ **Plugin Store** — standalone store window aggregating **GitHub multi-keyword search + npm official registry + awesome lists**: stars / language / last-update per card, fuzzy search, sort by stars or name, language filter, installed plugins auto-marked ✓ (non-clickable), one-click install
 - 🌉 **Auto proxy** — detects Clash / v2rayN and friends automatically (config → environment → Windows system proxy → common-port scan) and routes npm / git / updates through it; China-friendly mirror fallbacks for npm & Node.js
-- 🌐 **Multi-language UI** — follows the system language by default, manual zh/en/ja switch with flag icons
+- 🌐 **Multi-language UI** — follows the system language by default, manual **zh / en / ja / ko / ru / fr / de / es** switch with flag icons
 - 🖱️ **Modern system tray** — WPF floating rounded-card context menu (open launcher / start / stop / restart / browser / store / theme switch / exit), close-to-tray, single instance
 - 🧩 **Modern dialogs** — all prompts/confirmations replaced with theme-aware rounded glass dialogs
 - 📄 **Log viewer** — terminal-style log page with source switch (launcher.log / dsh.log), real-time filter, copy & clear
