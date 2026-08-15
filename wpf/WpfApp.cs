@@ -257,7 +257,7 @@ namespace DeepSeekHarness
             stack.Children.Add(logoEl);
             stack.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 19, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) });
             stack.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF 旗舰版"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
-            stack.Children.Add(new TextBlock { Text = "v1.5.0 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
+            stack.Children.Add(new TextBlock { Text = "v1.0.0 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
             // 加载动画条
             var bar = new Border { Height = 4, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.BgInput), Margin = new Thickness(30, 16, 30, 0) };
             var fill = new Border { Width = 60, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Left };
@@ -418,7 +418,7 @@ namespace DeepSeekHarness
         bool IsLauncherNewer()
         {
             Version cur, latest;
-            if (!Version.TryParse("1.5.0", out cur)) return false;
+            if (!Version.TryParse("1.0.0", out cur)) return false;
             if (!Version.TryParse(lupLatestStr, out latest)) return false;
             return latest > cur;
         }
@@ -680,7 +680,7 @@ namespace DeepSeekHarness
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            badge.Child = new TextBlock { Text = "v1.5.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
+            badge.Child = new TextBlock { Text = "v1.0.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
             brand.Children.Add(title);
             brand.Children.Add(badge);
 
@@ -826,7 +826,7 @@ namespace DeepSeekHarness
 
             sbRight = new TextBlock
             {
-                Text = "端口 8099 · 启动器 v1.5.0 (WPF)",
+                Text = "端口 8099 · 启动器 v1.0.0 (WPF)",
                 Foreground = Palette.Brush(Palette.TextFaint),
                 FontSize = 12,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -1193,7 +1193,7 @@ namespace DeepSeekHarness
                 sbDot.Effect = running ? Palette.GlowEffect(Palette.Success, 0.7) : null;
                 sbText.Text = running ? Lang.T("服务已在运行") : Lang.T("服务未启动");
             }
-            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.5.0 (WPF)"), dsh.Cfg.Port);
+            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.0 (WPF)"), dsh.Cfg.Port);
             }
             catch { }
         }
@@ -1682,23 +1682,47 @@ namespace DeepSeekHarness
         }
 
         // ---------- 更新页 ----------
+        TextBlock updSpinner;
+        Button updCheckButton;
+
         Grid BuildUpdatePage()
         {
             Grid pg;
             ScrollViewer scroll;
             pg = PageShell("更新与升级", out scroll);
             var stack = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-            stack.Children.Add(Btn("↻ " + Lang.T("检查更新"), delegate { RunUpdateCheck(); }, true));
+
+            // 顶部: 检查更新按钮 (带旋转加载动画)
+            updCheckButton = Btn(Lang.T("检查更新"), delegate { RunUpdateCheck(); }, true);
+            updCheckButton.Margin = new Thickness(0, 0, 10, 0);
+            var updBtnRow = new StackPanel { Orientation = Orientation.Horizontal };
+            updBtnRow.Children.Add(updCheckButton);
+            // 旋转加载指示 (检查中显示, 完成后隐藏) — 用 ⟳ 字符旋转, 无需额外图片资源
+            updSpinner = new TextBlock
+            {
+                Text = "⟳",
+                FontSize = 20,
+                Foreground = Palette.Brush(Palette.BlueLight),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 2, 0),
+                Visibility = Visibility.Collapsed
+            };
+            updBtnRow.Children.Add(updSpinner);
+            stack.Children.Add(updBtnRow);
 
             // 启动器
             var lup = new Grid();
-            lup.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            lup.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
             lup.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             lup.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) });
             var lupCol = new StackPanel();
-            upLupCur = new TextBlock { Text = "当前 v1.5.0", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold };
-            upLupLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12 };
-            upLupNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap };
+            var lupTitleRow = new StackPanel { Orientation = Orientation.Horizontal };
+            lupTitleRow.Children.Add(new TextBlock { Text = "🚀 ", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
+            lupTitleRow.Children.Add(new TextBlock { Text = Lang.T("启动器") + " (Launcher)", Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+            lupCol.Children.Add(lupTitleRow);
+            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.0", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            upLupLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
+            upLupNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
             lupCol.Children.Add(upLupCur);
             lupCol.Children.Add(upLupLatest);
             lupCol.Children.Add(upLupNote);
@@ -1708,15 +1732,19 @@ namespace DeepSeekHarness
             lup.Children.Add(upLupGo);
             stack.Children.Add(Card(lup));
 
-            // dsh
+            // dsh (Harness 核心)
             var dshG = new Grid();
-            dshG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            dshG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
             dshG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             dshG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
             var dshCol = new StackPanel();
-            upDshCur = new TextBlock { Text = Lang.T("当前") + " -", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold };
-            upDshLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12 };
-            upDshNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap };
+            var dshTitleRow = new StackPanel { Orientation = Orientation.Horizontal };
+            dshTitleRow.Children.Add(new TextBlock { Text = "🐋 ", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
+            dshTitleRow.Children.Add(new TextBlock { Text = "Harness (dsh)", Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+            dshCol.Children.Add(dshTitleRow);
+            upDshCur = new TextBlock { Text = Lang.T("当前") + " -", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            upDshLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
+            upDshNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
             dshCol.Children.Add(upDshCur);
             dshCol.Children.Add(upDshLatest);
             dshCol.Children.Add(upDshNote);
@@ -1728,7 +1756,11 @@ namespace DeepSeekHarness
 
             // 插件
             var plg = new StackPanel();
-            upPluginNote = new TextBlock { Text = "插件更新: 未检查", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold };
+            var plgTitleRow = new StackPanel { Orientation = Orientation.Horizontal };
+            plgTitleRow.Children.Add(new TextBlock { Text = "📦 ", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
+            plgTitleRow.Children.Add(new TextBlock { Text = Lang.T("插件"), Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+            plg.Children.Add(plgTitleRow);
+            upPluginNote = new TextBlock { Text = Lang.T("插件更新") + ": " + Lang.T("未检查"), Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
             plg.Children.Add(upPluginNote);
             upPluginUp = Btn(Lang.T("全部更新插件"), delegate { UpdateAllPlugins(); }, false);
             upPluginUp.Margin = new Thickness(0, 8, 0, 0);
@@ -1739,11 +1771,42 @@ namespace DeepSeekHarness
             return pg;
         }
 
+        // 检查中: 显示旋转动画 + 禁用按钮; 完成: 隐藏动画 + 恢复
+        void SetUpdateChecking(bool checking)
+        {
+            if (updCheckButton != null)
+            {
+                updCheckButton.IsEnabled = !checking;
+                updCheckButton.Content = checking ? Lang.T("正在检查…") : Lang.T("检查更新");
+                updCheckButton.Opacity = checking ? 0.7 : 1.0;
+            }
+            if (updSpinner != null)
+            {
+                updSpinner.Visibility = checking ? Visibility.Visible : Visibility.Collapsed;
+                if (checking)
+                {
+                    var rot = new RotateTransform(0);
+                    updSpinner.RenderTransform = rot;
+                    updSpinner.RenderTransformOrigin = new Point(0.5, 0.5);
+                    var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900)) { RepeatBehavior = RepeatBehavior.Forever };
+                    rot.BeginAnimation(RotateTransform.AngleProperty, spin);
+                }
+                else
+                {
+                    updSpinner.RenderTransform = null;
+                }
+            }
+            // 检查期间各栏显示"检查中…"占位, 避免"偷偷摸摸查完瞬间刷新"
+            if (upLupNote != null && checking) upLupNote.Text = "⏳ " + Lang.T("正在检查…");
+            if (upDshNote != null && checking) upDshNote.Text = "⏳ " + Lang.T("正在检查…");
+            if (upPluginNote != null && checking) upPluginNote.Text = Lang.T("插件更新") + ": ⏳ " + Lang.T("正在检查…");
+        }
+
         void RenderUpdate()
         {
             if (upDshCur == null) return;
             var u = dsh.Update;
-            upDshCur.Text = "当前 " + (string.IsNullOrEmpty(u.DshCurrent) ? "-" : u.DshCurrent);
+            upDshCur.Text = "🐋 " + Lang.T("当前") + " " + (string.IsNullOrEmpty(u.DshCurrent) ? "-" : u.DshCurrent);
             upDshLatest.Text = "最新 " + (string.IsNullOrEmpty(u.DshLatest) ? "-" : u.DshLatest);
             upDshNote.Text = u.DshUpdate ? "发现新版本！" : "已是最新版本";
             upDshNote.Foreground = Palette.Brush(u.DshUpdate ? Palette.Warn : Palette.TextFaint);
@@ -1774,6 +1837,7 @@ namespace DeepSeekHarness
         void RunUpdateCheck()
         {
             sbText.Text = "正在检查更新…";
+            SetUpdateChecking(true);
             var t = new Thread(delegate()
             {
                 string lupLatest = dsh.CheckLauncherUpdate();
@@ -1790,6 +1854,7 @@ namespace DeepSeekHarness
                     }
                     upLupNote.Text = newer ? "发现新版本，可前往 GitHub 下载" : "已是最新版本";
                     upLupNote.Foreground = Palette.Brush(newer ? Palette.Warn : Palette.TextFaint);
+                    SetUpdateChecking(false);
                     RenderUpdate();
                     MarkDirty(3); sbText.Text = "检查更新完成";
                 }));
@@ -2393,7 +2458,7 @@ namespace DeepSeekHarness
                 // 头部小标题
                 var head = new Grid { Margin = new Thickness(10, 3, 10, 4) };
                 var headTitle = new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 11, FontWeight = FontWeights.Bold };
-                var headVer = new TextBlock { Text = "v1.5.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
+                var headVer = new TextBlock { Text = "v1.0.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
                 head.Children.Add(headTitle);
                 head.Children.Add(headVer);
                 stack.Children.Add(head);
