@@ -1642,12 +1642,15 @@ namespace DeepSeekHarness
             var t = new Thread(delegate()
             {
                 string[] results = dsh.PullAllPlugins();
+                // 重新检查更新状态, 让更新页按钮立即变为"✓ 已是最新"
+                try { dsh.Update = dsh.CheckUpdates(dsh.Env); } catch { }
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     SetBusy(false);
-                    MarkDirty(2); MarkDirty(0); sbText.Text = "插件更新完成";
+                    MarkDirty(2); MarkDirty(0); MarkDirty(3); sbText.Text = "插件更新完成";
                     ShowModernInfo(this, "全部更新", string.Join("\n", results));
                     RenderPlugins();
+                    RenderUpdate();
                 }));
             });
             t.IsBackground = true;
@@ -1663,12 +1666,15 @@ namespace DeepSeekHarness
                 var lines = new List<string>();
                 lines.AddRange(dsh.PullAllPlugins());
                 lines.AddRange(dsh.RepairPlugins());
+                // 重新检查更新状态, 让更新页按钮立即变为"✓ 已是最新"
+                try { dsh.Update = dsh.CheckUpdates(dsh.Env); } catch { }
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     SetBusy(false);
-                    MarkDirty(2); MarkDirty(0); sbText.Text = "一键维护完成";
+                    MarkDirty(2); MarkDirty(0); MarkDirty(3); sbText.Text = "一键维护完成";
                     ShowModernInfo(this, "一键维护", string.Join("\n", lines.ToArray()));
                     RenderPlugins();
+                    RenderUpdate();
                 }));
             });
             t.IsBackground = true;
@@ -1801,9 +1807,12 @@ namespace DeepSeekHarness
                 string r = dsh.NpmInstallGlobal(dsh.Cfg.NpmPackage, 360000);
                 var env = dsh.DetectEnvironment();
                 dsh.Env = env;
+                // 重新检查更新状态, 让"立即升级 dsh"按钮立即变为"✓ 已是最新"
+                try { dsh.Update = dsh.CheckUpdates(env); } catch { }
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
                     SetBusy(false);
+                    MarkDirty(3);
                     RenderUpdate();
                     RenderOverview();
                     sbText.Text = r == null ? "升级失败" : "dsh 升级完成";
