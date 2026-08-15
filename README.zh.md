@@ -1,13 +1,36 @@
-# dsh-launcher
+# 🐋 dsh-launcher — DeepSeek Harness 启动器
 
-> DeepSeek Harness (dsh) 傻瓜式启动器：**双击即用、一键安装、一键更新、一键维护**——Node.js、dsh、插件全包办，带国内镜像兜底。
+> **给小白用的 DeepSeek Harness 管理工具——管理 dsh、插件、环境，一键全搞定。**
 
-[English](README.md) | [中文](README.zh.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md)
+| 🇨🇳 中文 | 🇺🇸 English | 🇯🇵 日本語 | 🇰🇷 한국어 | 🇷🇺 Русский |
+|---|---|---|---|---|
+| [README.zh.md](README.zh.md) | [README.md](README.md) | [README.ja.md](README.ja.md) | [README.ko.md](README.ko.md) | [README.ru.md](README.ru.md) |
 
 [![dsh-launcher](https://img.shields.io/badge/dsh--launcher-%E2%9C%93-4D6BFE?style=flat-square)](https://github.com/topics/dsh-launcher)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-blue?style=flat-square&logo=windows)](../../releases)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
 [![Releases](https://img.shields.io/github/v/release/loudMore/dsh-launcher?style=flat-square)](../../releases)
+
+---
+
+## ✨ 这是什么
+
+**DeepSeek Harness (dsh) 的傻瓜式桌面管理工具**，把 dsh 的安装、启动、更新、插件维护全部收进一个图形界面，**不用敲一行命令**。
+
+### 🎯 核心亮点
+
+| | 说明 |
+|---|---|
+| 🧩 **管理 dsh & 插件** | 图形化管理所有插件：安装、更新、修复依赖、启用/禁用、一键维护；缺依赖自动修复，坏插件自动隔离不拖垮服务 |
+| 🔄 **一键更新 & 维护** | 启动器 / dsh / 插件 三维更新看板，自动检查更新，一键全部升级 |
+| ⚡ **一键安装 dsh** | 没装 Node.js？自动装好（支持自定义目录）；没装 dsh？一条命令的事 |
+| 🔍 **环境检测** | 自动检测 Node / npm / Git / dsh，缺什么一目了然 |
+| 🐣 **小白友好** | 双击即用，全程图形界面，无需接触命令行 |
+| 🛍️ **插件商城** | 聚合 GitHub + npm + Awesome 数百插件，带星标/语言/更新日期 |
+| 🌉 **自动代理** | 自动探测代理 + 国内镜像兜底，网络再差也能装 |
+| 🎨 **美观现代** | 深/浅双主题、8 种语言、GPU 渲染 WPF 界面 |
+
+---
 
 ## 界面预览
 
@@ -29,11 +52,12 @@
 
 装 dsh 要装 Node.js、要敲 npm 命令、要折腾镜像源；更新要查命令；插件要手动 `git pull`……**太麻烦了。**
 
-本启动器把这些全部打包进**一个 exe**：
+这个启动器**就是给小白准备的 dsh 管理工具**——把 dsh 的安装、启动、更新、插件维护全部收进一个图形界面：
 
-```
-双击 → 闪屏 → 点「一键安装」→ 喝杯咖啡 → 点「一键启动」→ 浏览器自动打开
-```
+- 🎯 **环境检测 + 一键安装 dsh**：没装 Node.js？自动帮你装好（支持自定义目录）；没装 dsh？一条命令的事
+- 🔄 **一键维护**：dsh 升级、所有插件更新、依赖修复，点一下全搞定
+- 🧩 **图形化插件管理**：装插件不用敲命令，商城挑、按钮点，缺依赖自动修复，坏插件自动隔离不拖垮服务
+- 🖥️ **开箱即用**：双击启动 → 点「一键启动」→ 浏览器自动打开，全程无需接触命令行
 
 | 你是谁 | 你的痛点 | 我们的答案 |
 |---|---|---|
