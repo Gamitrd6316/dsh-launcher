@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 (代码式 WPF, 无 XAML 编译链)
 //  v0.1 骨架: 深色主题 + WindowChrome 无边框窗(原生缩放/吸附) + 侧栏导航 + 切页淡入动画
 //  编译: build.bat (仅用系统自带 csc + GAC WPF 程序集)
@@ -257,7 +257,7 @@ namespace DeepSeekHarness
             stack.Children.Add(logoEl);
             stack.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 19, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) });
             stack.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF 旗舰版"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
-            stack.Children.Add(new TextBlock { Text = "v1.0.1 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
+            stack.Children.Add(new TextBlock { Text = "v1.0.2 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
             // 加载动画条
             var bar = new Border { Height = 4, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.BgInput), Margin = new Thickness(30, 16, 30, 0) };
             var fill = new Border { Width = 60, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Left };
@@ -418,7 +418,7 @@ namespace DeepSeekHarness
         bool IsLauncherNewer()
         {
             Version cur, latest;
-            if (!Version.TryParse("1.0.1", out cur)) return false;
+            if (!Version.TryParse("1.0.2", out cur)) return false;
             if (!Version.TryParse(lupLatestStr, out latest)) return false;
             return latest > cur;
         }
@@ -686,7 +686,7 @@ namespace DeepSeekHarness
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            badge.Child = new TextBlock { Text = "v1.0.1", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
+            badge.Child = new TextBlock { Text = "v1.0.2", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
             brand.Children.Add(title);
             brand.Children.Add(badge);
 
@@ -832,7 +832,7 @@ namespace DeepSeekHarness
 
             sbRight = new TextBlock
             {
-                Text = "端口 8099 · 启动器 v1.0.1 (WPF)",
+                Text = "端口 8099 · 启动器 v1.0.2 (WPF)",
                 Foreground = Palette.Brush(Palette.TextFaint),
                 FontSize = 12,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -1221,7 +1221,7 @@ namespace DeepSeekHarness
                 sbDot.Effect = running ? Palette.GlowEffect(Palette.Success, 0.7) : null;
                 sbText.Text = running ? Lang.T("服务已在运行") : Lang.T("服务未启动");
             }
-            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.1 (WPF)"), dsh.Cfg.Port);
+            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.2 (WPF)"), dsh.Cfg.Port);
             }
             catch { }
         }
@@ -1531,8 +1531,13 @@ namespace DeepSeekHarness
 
         void OpenStore()
         {
-            var w = new StoreWindow(dsh) { Owner = this };
-            w.Show();
+            try
+            {
+                if (!IsVisible) ShowMain();   // 主窗口隐藏时先弹出, 避免 owned window 异常
+                var w = new StoreWindow(dsh) { Owner = this };
+                w.Show();
+            }
+            catch { }
         }
 
         void OpenPluginsDir()
@@ -1785,7 +1790,7 @@ namespace DeepSeekHarness
             lupTitleRow.Children.Add(new TextBlock { Text = "🚀 ", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
             lupTitleRow.Children.Add(new TextBlock { Text = Lang.T("启动器") + " (Launcher)", Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             lupCol.Children.Add(lupTitleRow);
-            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.1", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.2", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
             upLupLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
             upLupNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
             lupCol.Children.Add(upLupCur);
@@ -2243,7 +2248,7 @@ namespace DeepSeekHarness
             }
             var headText = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
             headText.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 16, FontWeight = FontWeights.Bold });
-            headText.Children.Add(new TextBlock { Text = "v1.0.1 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
+            headText.Children.Add(new TextBlock { Text = "v1.0.2 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
             head.Children.Add(headText);
             Grid.SetRow(head, 0);
             g.Children.Add(head);
@@ -2612,7 +2617,7 @@ namespace DeepSeekHarness
                 // 头部小标题
                 var head = new Grid { Margin = new Thickness(10, 3, 10, 4) };
                 var headTitle = new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 11, FontWeight = FontWeights.Bold };
-                var headVer = new TextBlock { Text = "v1.0.1", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
+                var headVer = new TextBlock { Text = "v1.0.2", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
                 head.Children.Add(headTitle);
                 head.Children.Add(headVer);
                 stack.Children.Add(head);
@@ -2633,10 +2638,12 @@ namespace DeepSeekHarness
 
                 stack.Children.Add(Item(Palette.IsDark ? "☀️ " + Lang.T("浅色模式") : "🌙 " + Lang.T("深色模式"), delegate
                 {
+                    // 全局主题切换: 保存配置 → 重建整个主窗口 → 弹出展示新主题
                     Palette.IsDark = !Palette.IsDark;
                     dsh.Cfg.Theme = Palette.IsDark ? "dark" : "light";
-                    dsh.Cfg.Save();
-                    main.RebuildAllPages();
+                    try { dsh.Cfg.Save(); } catch { }
+                    try { main.RebuildAllPages(); } catch { }
+                    main.ShowMain();   // 弹出主窗口让用户立即看到新主题
                 }));
                 stack.Children.Add(Separator());
 
@@ -2684,8 +2691,10 @@ namespace DeepSeekHarness
                 };
                 b.MouseLeftButtonUp += delegate
                 {
+                    // 先执行动作再关闭: 避免 popup 关闭过程干扰主窗口操作 (主题切换/页面跳转等)
+                    try { onClick(); }
+                    catch { }
                     Close();
-                    onClick();
                 };
                 return b;
             }
