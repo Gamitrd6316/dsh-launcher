@@ -56,7 +56,7 @@ namespace DeepSeekHarness
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
             { "GitHub 项目主页", "GitHub Project" },
-            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.4 (WPF)", "Port {0} · Launcher v1.0.4 (WPF)" },
+            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.5 (WPF)", "Port {0} · Launcher v1.0.5 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
@@ -82,6 +82,9 @@ namespace DeepSeekHarness
             { "已找到 dsh", "dsh found" },
             { "未找到 dsh", "dsh not found" },
             { "正在智能查找 dsh…", "Smart-searching dsh…" },
+            { "检查插件", "Check plugins" }, { "启动服务", "Start service" }, { "就绪", "Ready" },
+            { "正在启动…", "Starting…" }, { "正在检查插件兼容性…", "Checking plugin compatibility…" },
+            { "正在启动服务，请稍候…", "Starting service, please wait…" },
             { "以下插件因缺少依赖被暂时禁用，服务已正常启动：", "These plugins were disabled due to missing deps; the service is running normally:" },
             { "修复后重启服务即可恢复。可在「插件」页一键修复依赖，或在 dsh 终端执行:", "Restart the service after fixing. Use the Plugins page or run in the dsh terminal:" }
         };
