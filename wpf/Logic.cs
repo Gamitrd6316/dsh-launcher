@@ -56,7 +56,7 @@ namespace DeepSeekHarness
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
             { "GitHub 项目主页", "GitHub Project" },
-            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.5 (WPF)", "Port {0} · Launcher v1.0.5 (WPF)" },
+            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.6 (WPF)", "Port {0} · Launcher v1.0.6 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
@@ -71,6 +71,8 @@ namespace DeepSeekHarness
             { "升级 dsh", "Upgrade dsh" }, { "dsh 已升级到最新版。", "dsh is now up to date." },
             { "依赖完整", "dependencies OK" }, { "缺依赖", "missing deps" }, { "修复依赖", "Fix deps" },
             { "插件已被隔离", "Plugins quarantined" },
+            { "以下插件在启动后仍报错，已被自动禁用：", "These plugins still error after launch and were auto-disabled:" },
+            { "可尝试：在「插件」页修复依赖后启用；或复制完整日志到「日志」页，让 dsh 排查。", "Try fixing deps in the Plugins page, or copy full logs to the Logs page for dsh to diagnose." },
             { "关于", "About" },
             { "未检测到 dsh，请选择你的情况", "dsh not found — choose your situation" },
             { "如果电脑上已经装过 dsh，选「已安装」让软件自动帮你找到它；没装过就点「一键安装」。", "If dsh is already installed, pick \u201cInstalled\u201d and let the app find it; otherwise click Install." },
@@ -1625,6 +1627,190 @@ namespace DeepSeekHarness
             }
             catch { }
             return quarantined;
+        }
+
+        // ---------- 日志巡检: 第二道防线 ----------
+        // 服务启动后扫描 dsh 日志, 正则匹配插件加载失败, 定位问题插件并自动隔离
+        // 返回被隔离的插件列表 (元素格式: "插件名（原因）")
+        public List<string> QuarantineByLogScan()
+        {
+            var quarantined = new List<string>();
+            try
+            {
+                // 1. 收集候选日志文件
+                var logFiles = new List<string>();
+                try { logFiles.Add(Path.Combine(Cfg.LogDir, "dsh.log")); } catch { }
+                try { logFiles.Add(Path.Combine(Cfg.LogDir, "launcher.log")); } catch { }
+                try
+                {
+                    string homeLog = Path.Combine(Cfg.DshHome, "dsh.log");
+                    if (File.Exists(homeLog) && !logFiles.Contains(homeLog)) logFiles.Add(homeLog);
+                }
+                catch { }
+
+                // 2. 汇总日志文本 (每个文件取尾部 200 行)
+                var sb = new StringBuilder();
+                foreach (string f in logFiles)
+                {
+                    try
+                    {
+                        if (!File.Exists(f)) continue;
+                        string[] lines = File.ReadAllLines(f);
+                        int start = Math.Max(0, lines.Length - 200);
+                        for (int i = start; i < lines.Length; i++) sb.AppendLine(lines[i]);
+                    }
+                    catch { }
+                }
+                string log = sb.ToString();
+                if (log.Length == 0) return quarantined;
+
+                // 3. 识别"插件加载失败"模式, 提取插件标识 (只用加载期错误, 避免误伤运行期普通告警)
+                var pluginIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                string[] patterns = {
+                    "failed to load",
+                    "failed to import",
+                    "cannot find package",
+                    "cannot find module",
+                    "unable to load plugin",
+                    "failed to resolve",
+                    "failed to initialize",
+                    "loader entry",
+                    "failed to build",
+                    "error loading plugin"
+                };
+                foreach (string pat in patterns)
+                {
+                    try
+                    {
+                        var re = new Regex(pat, RegexOptions.IgnoreCase);
+                        foreach (Match m in re.Matches(log))
+                        {
+                            // 从错误行上下文提取 @scope/name 或 name
+                            int lineStart = log.LastIndexOf('\n', Math.Max(0, m.Index - 1)) + 1;
+                            int lineEnd = log.IndexOf('\n', m.Index);
+                            if (lineEnd < 0) lineEnd = log.Length;
+                            string line = log.Substring(lineStart, lineEnd - lineStart);
+                            var idRe = new Regex("([@A-Za-z0-9_\\-\\.]+/[A-Za-z0-9_\\-\\.]+|[A-Za-z0-9_\\-\\.]+\\.(?:cjs|js|mjs))", RegexOptions.IgnoreCase);
+                            foreach (Match im in idRe.Matches(line))
+                            {
+                                string id = im.Groups[1].Value;
+                                if (id.IndexOf("dsh", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("plugin", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || id.EndsWith(".cjs", StringComparison.OrdinalIgnoreCase) || id.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+                                    pluginIds.Add(id);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                if (pluginIds.Count == 0) return quarantined;
+
+                // 4. 把识别的插件标识映射到 plugins 目录并隔离
+                if (Directory.Exists(Cfg.PluginsRoot))
+                {
+                    foreach (string id in pluginIds)
+                    {
+                        string baseName = id;
+                        int slash = baseName.IndexOf('/');
+                        if (slash >= 0) baseName = baseName.Substring(slash + 1);
+                        // 去掉文件扩展名
+                        foreach (string ext in new[] { ".cjs", ".js", ".mjs" })
+                            if (baseName.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                                baseName = baseName.Substring(0, baseName.Length - ext.Length);
+
+                        foreach (string d in Directory.GetDirectories(Cfg.PluginsRoot))
+                        {
+                            string dirName = Path.GetFileName(d);
+                            if (dirName.StartsWith("_", StringComparison.Ordinal)) continue;
+                            if (dirName.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase)) continue;
+                            // 目录名与插件标识匹配 (忽略大小写/连字符变体)
+                            bool match = string.Equals(dirName, baseName, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(dirName.Replace("-", ""), baseName.Replace("-", ""), StringComparison.OrdinalIgnoreCase)
+                                || id.IndexOf(dirName, StringComparison.OrdinalIgnoreCase) >= 0;
+                            if (!match) continue;
+                            try
+                            {
+                                Directory.Move(d, d + ".disabled");
+                                quarantined.Add(dirName + "（日志报错: " + id + "）");
+                                AppendLog("[plugin] LOG-QUARANTINED " + dirName + " cause=" + id);
+                            }
+                            catch { }
+                            break;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return quarantined;
+        }
+
+        // ---------- 前端 bundle 探测: 第三道防线 ----------
+        // 服务就绪后, 对每个 git 插件请求其 client bundle URL, 4xx/5xx 说明该插件 UI 加载失败 → 隔离
+        // 返回被隔离的插件列表 (元素格式: "插件名（前端加载失败）")
+        public List<string> QuarantineByBundleProbe()
+        {
+            var quarantined = new List<string>();
+            try
+            {
+                if (!IsPortOpen(Cfg.Port)) return quarantined;
+                if (!Directory.Exists(Cfg.PluginsRoot)) return quarantined;
+                foreach (string d in Directory.GetDirectories(Cfg.PluginsRoot))
+                {
+                    string dirName = Path.GetFileName(d);
+                    if (dirName.StartsWith("_", StringComparison.Ordinal)) continue;
+                    if (dirName.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase)) continue;
+                    try
+                    {
+                        // 探测该插件的 client.js (dsh 前端插件标准入口)
+                        // 404 = 服务端插件无前端 bundle, 正常; 仅 5xx = 前端加载失败 (上次事故即 500/502)
+                        string url = string.Format("http://127.0.0.1:{0}/plugins/{1}/client.js", Cfg.Port, Uri.EscapeDataString(dirName));
+                        string code = ProbeUrl(url, 5000);
+                        if (code == "500" || code == "502" || code == "503")
+                        {
+                            Directory.Move(d, d + ".disabled");
+                            quarantined.Add(dirName + "（前端加载失败 HTTP " + code + "）");
+                            AppendLog("[plugin] BUNDLE-QUARANTINED " + dirName + " http=" + code);
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return quarantined;
+        }
+
+        // 请求 URL 返回状态码字符串 (200/404/500/...), 失败返回 ""
+        static string ProbeUrl(string url, int timeoutMs)
+        {
+            try
+            {
+                var req = (HttpWebRequest)WebRequest.Create(url);
+                req.Method = "GET";
+                req.Timeout = timeoutMs;
+                req.ReadWriteTimeout = timeoutMs;
+                req.UserAgent = "dsh-launcher-probe";
+                string proxy = ResolveProxyStatic();
+                if (!string.IsNullOrEmpty(proxy)) req.Proxy = new WebProxy(proxy);
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                    return ((int)resp.StatusCode).ToString();
+            }
+            catch (WebException wex)
+            {
+                var r = wex.Response as HttpWebResponse;
+                if (r != null) return ((int)r.StatusCode).ToString();
+                return "";
+            }
+            catch { return ""; }
+        }
+
+        // 静态代理解析 (供 ProbeUrl 使用, 不触发 UI 线程)
+        static string cachedProxy = "";
+        static string ResolveProxyStatic()
+        {
+            if (!string.IsNullOrEmpty(cachedProxy)) return cachedProxy;
+            string env = Environment.GetEnvironmentVariable("HTTPS_PROXY");
+            if (string.IsNullOrEmpty(env)) env = Environment.GetEnvironmentVariable("HTTP_PROXY");
+            cachedProxy = env ?? "";
+            return cachedProxy;
         }
 
         // 生成给玩家的 dsh 修复提示词 (在 dsh 终端里可执行)
