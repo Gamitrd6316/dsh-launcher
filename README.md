@@ -5,7 +5,7 @@
 [English](README.md) | [中文](README.zh.md)
 
 [![dsh-launcher](https://img.shields.io/badge/dsh--launcher-%E2%9C%93-4D6BFE?style=flat-square)](https://github.com/topics/dsh-launcher)
-[![Windows](https://img.shields.io/badge/Windows-7%2B-blue?style=flat-square&logo=windows)](../../releases)
+[![Windows](https://img.shields.io/badge/Windows-10%2B-blue?style=flat-square&logo=windows)](../../releases)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
 [![Releases](https://img.shields.io/github/v/release/loudMore/dsh-launcher?style=flat-square)](../../releases)
 
@@ -25,8 +25,6 @@
 
 ## Why this launcher
 
-> 🧪 **WPF 重构版进行中**：GPU 渲染 + 原生动画的下一代版本见 [`wpf/`](./wpf/README.md)（源码已入库，功能与 v1.5.0 等价）。
-
 Setting up dsh normally means installing Node.js, running npm commands, dealing with registries; updating means digging out commands; plugins mean manual `git pull`. **Too much hassle.**
 
 This launcher packs all of it into **one exe**:
@@ -43,16 +41,19 @@ double-click → splash → click "Install" → grab a coffee → click "Start" 
 
 ## Features
 
-- 🎯 **One-click Install** — auto-detect environment → install Node.js if missing (mirror fallback) → npm install dsh (mirror fallback), with progress guidance
-- ▶️ **One-click Start** — the big button morphs by state: *Install* / *Start* / *Open Browser* + stop / restart; browser auto-opens at `http://127.0.0.1:8099`
-- 🔄 **3-way Update Strategy** — launcher (GitHub `version.txt`), dsh (npm), plugins (git) all show **current / latest**; fetched automatically on launch and every 3 hours — no manual clicking
-- 🧩 **Plugin Manager** — remote URL / branch / update badges per plugin; install via **git URL** or **npm package name**; per-plugin update, remove, one-click maintain (update all + fix deps)
-- 🛍️ **Plugin Store** — standalone store window listing GitHub `topic:dsh-plugin` plugins, **paginated up to 500 repos**: stars / language / last-update per card, multi-keyword fuzzy search, sort by stars or name, language filter, installed plugins auto-marked ✓, one-click install and a browse button that opens the repo page; list is pre-fetched at launch, cached locally (official JSON serializer) and auto-refreshed in the background; lazy rendering keeps hundreds of rows smooth, slim custom scrollbar
+- 🎨 **Modern WPF UI** — GPU-composited rendering, PerMonitorV2 DPI-aware, dark/light dual themes with instant hot-switching, rounded cards with subtle gradients & glow, fluent page transitions, slim adaptive scrollbars
+- 🎯 **One-click Install** — auto-detect environment → install Node.js if missing (mirror fallback, **custom install path supported**, persisted into user PATH) → npm install dsh (mirror fallback)
+- ▶️ **One-click Start** — the big button morphs by state: *Install* / *Start* / *Open Browser* + stop / restart; a resident service-state watcher keeps the UI always in sync with the real port status
+- 🔄 **3-way Update Strategy** — launcher (GitHub `version.txt`), dsh (npm), plugins (git) all show **current / latest** with animated checking indicator; fetched automatically on launch and every 3 hours; state-aware buttons (`✓ already latest` disabled) refresh right after updates
+- 🧩 **Plugin Manager** — install via **git URL** or **npm package name**; per-plugin smart update (only pulls when the remote truly has new commits — no false "failed" on up-to-date repos), remove, enable/disable, one-click maintain (update all + fix deps)
+- 🛍️ **Plugin Store** — standalone store window aggregating **GitHub multi-keyword search + npm official registry + awesome lists**: stars / language / last-update per card, fuzzy search, sort by stars or name, language filter, installed plugins auto-marked ✓ (non-clickable), one-click install
 - 🌉 **Auto proxy** — detects Clash / v2rayN and friends automatically (config → environment → Windows system proxy → common-port scan) and routes npm / git / updates through it; China-friendly mirror fallbacks for npm & Node.js
-- 🌐 **Bilingual UI** — follows the system language by default, manual zh/en switch with flags; vector icons across nav & settings
-- 🛡️ **Robust** — crash.log on unhandled exceptions, actionable error hints, dark themed dialogs, atomic smooth page rendering (no banding)
-- 🖥️ **System tray** — close-to-tray, single instance
-- 📐 **Hi-DPI responsive** — runtime DPI scaling; window size/position computed from the actual screen; borderless resize & maximize
+- 🌐 **Multi-language UI** — follows the system language by default, manual zh/en/ja switch with flag icons
+- 🖱️ **Modern system tray** — WPF floating rounded-card context menu (open launcher / start / stop / restart / browser / store / theme switch / exit), close-to-tray, single instance
+- 🧩 **Modern dialogs** — all prompts/confirmations replaced with theme-aware rounded glass dialogs
+- 📄 **Log viewer** — terminal-style log page with source switch (launcher.log / dsh.log), real-time filter, copy & clear
+- 🛡️ **Robust** — crash.log on unhandled exceptions, actionable error hints, atomic smooth page rendering
+- 📐 **Hi-DPI responsive** — runtime DPI scaling; borderless resize & maximize (native WindowChrome)
 
 ## Quick start
 
@@ -71,18 +72,21 @@ All settings live in the Settings page and persist to `launcher.json` next to th
 
 ## Development
 
-Single-file source `Launcher.cs` — double-click `build.bat` to compile (no Visual Studio needed, ships with .NET Framework 4.0's compiler).
+WPF source (code-only, no XAML toolchain) in [`wpf/`](./wpf/README.md) — double-click `build.bat` to compile (no Visual Studio needed, ships with .NET Framework 4.8's compiler + GAC WPF assemblies).
 
 ```
 dsh-launcher/
-├─ Launcher.cs          # the whole app, one file
-├─ build.bat            # one-click build (auto-detects icon assets)
-├─ app.manifest         # Hi-DPI aware
-├─ version.txt          # version source for self-update
-└─ .github/workflows/   # tag → auto build exe → publish Release
+├─ wpf/
+│  ├─ WpfApp.cs           # shell UI: titlebar/sidebar/6 pages/tray/splash/dialogs
+│  ├─ Logic.cs            # config / env / proxy / service / plugins / store / updates / lang
+│  ├─ StoreWindow.cs      # plugin store window
+│  ├─ build.bat           # one-click build (csc + GAC WPF)
+│  └─ app.manifest        # PerMonitorV2 Hi-DPI aware
+├─ version.txt            # version source for self-update
+└─ .github/workflows/     # tag → auto build exe → publish Release
 ```
 
-**Release flow**: bump `LauncherVersion` in `Launcher.cs` → sync `version.txt` → push & tag (`v*`) → CI builds and publishes the exe.
+**Release flow**: bump the version strings in `WpfApp.cs` → sync `version.txt` → push & tag (`v*`) → CI builds and publishes the exe.
 
 ## Contributing
 
@@ -90,7 +94,7 @@ Issues & PRs welcome: feature ideas, translations (the `Lang` dictionary), bug f
 
 ## Notes
 
-- Official DeepSeek logo assets are not included — supply your own same-named files (`build.bat` builds fine without them)
+- Official DeepSeek logo assets are not included in the repo — supply your own same-named files under `wpf/` (`build.bat` builds fine without them)
 - Not an official DeepSeek product; just a handy launcher/maintainer for dsh
 
 ## License
