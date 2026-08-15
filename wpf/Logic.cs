@@ -1036,7 +1036,10 @@ namespace DeepSeekHarness
                     foreach (string dir in Directory.GetDirectories(Cfg.PluginsRoot))
                     {
                         if (!Directory.Exists(Path.Combine(dir, ".git"))) continue;
-                        string remote = RunGit(string.Format("-C \"{0}\" ls-remote origin HEAD", dir), 20000);
+                        // 按本地当前分支对比远程同名分支, 避免本地分支≠远程HEAD导致误报"可更新"
+                        string branch = FirstLine(RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", dir), 10000));
+                        if (string.IsNullOrEmpty(branch)) continue;
+                        string remote = RunGit(string.Format("-C \"{0}\" ls-remote origin {1}", dir, branch), 20000);
                         string local = RunGit(string.Format("-C \"{0}\" rev-parse HEAD", dir), 10000);
                         if (remote != null && local != null)
                         {
@@ -1481,17 +1484,28 @@ namespace DeepSeekHarness
             catch { }
         }
 
+        // 智能更新单个插件: 只有远程确实有可拉取的提交才执行 pull, 否则明确报告"已是最新", 绝不误报失败
         public string PullPlugin(PluginItem p)
         {
-            string r = RunGit(string.Format("-C \"{0}\" pull", p.Path), 120000);
-            AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成"));
-            if (r == null) return "拉取失败（网络或冲突）";
-            if (r.IndexOf("Already up to date", StringComparison.OrdinalIgnoreCase) >= 0 || r.IndexOf("已经是最新", StringComparison.OrdinalIgnoreCase) >= 0)
+            // 1. 是否有远程跟踪分支
+            string upstream = RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref --symbolic-full-name @{{u}}", p.Path), 10000);
+            if (upstream == null)
+                return "无远程跟踪分支（跳过）";
+            // 2. 远程是否真有新提交 (HEAD 落后于上游的提交数)
+            string behind = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..@{{u}}", p.Path), 10000);
+            if (behind == null) return "检查远程状态失败";
+            int n;
+            behind = behind.Trim();
+            if (!int.TryParse(behind, out n) || n <= 0)
                 return "已是最新";
+            // 3. 确实有更新才执行 pull (快进模式, 避免产生 merge 提交)
+            string r = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
+            AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成") + " ahead=" + n);
+            if (r == null) return "拉取失败（网络或冲突）";
             return "已更新至最新";
         }
 
-        // 一键维护: 更新所有 git 插件
+        // 一键维护: 更新所有 git 插件 (仅真正有更新的执行 pull, 已最新明确显示, 绝不误报失败)
         public string[] PullAllPlugins()
         {
             var results = new List<string>();
