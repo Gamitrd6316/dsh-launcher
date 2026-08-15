@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 · 逻辑层
 //  从 WinForms 版移植: 命令助手 / 配置 / 环境检测 / 代理 / 服务 / 插件 / 商城 / 更新
 //  全部 UI 无关; 通过 OnStatus / OnLog 回调向界面汇报
@@ -56,7 +56,7 @@ namespace DeepSeekHarness
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
             { "GitHub 项目主页", "GitHub Project" },
-            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.0 (WPF)", "Port {0} · Launcher v1.0.0 (WPF)" },
+            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.1 (WPF)", "Port {0} · Launcher v1.0.1 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
@@ -68,7 +68,11 @@ namespace DeepSeekHarness
             { "核心服务与路径", "Core & Paths" }, { "网络、包源与更新", "Network, Registry & Updates" }, { "界面外观与个性化", "Appearance & Language" },
             { "配置文件", "Config File" },
             { "全部最新", "All up to date" }, { "一键维护中…", "Maintaining…" },
-            { "升级 dsh", "Upgrade dsh" }, { "dsh 已升级到最新版。", "dsh is now up to date." }
+            { "升级 dsh", "Upgrade dsh" }, { "dsh 已升级到最新版。", "dsh is now up to date." },
+            { "依赖完整", "dependencies OK" }, { "缺依赖", "missing deps" }, { "修复依赖", "Fix deps" },
+            { "插件已被隔离", "Plugins quarantined" },
+            { "以下插件因缺少依赖被暂时禁用，服务已正常启动：", "These plugins were disabled due to missing deps; the service is running normally:" },
+            { "修复后重启服务即可恢复。可在「插件」页一键修复依赖，或在 dsh 终端执行:", "Restart the service after fixing. Use the Plugins page or run in the dsh terminal:" }
         };
 
         static Dictionary<string, string> ja = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -394,6 +398,10 @@ namespace DeepSeekHarness
         public bool Disabled;
         public string RemoteUrl = "";
         public string Branch = "";
+        // 依赖状态 (ScanPlugins 时填充)
+        public bool DepsChecked;        // 是否已检查
+        public bool DepsOk;             // 依赖是否完整
+        public string MissingDeps = ""; // 缺失依赖列表 (逗号分隔)
     }
 
     // ---------- 商城条目 ----------
@@ -1189,6 +1197,8 @@ namespace DeepSeekHarness
                     foreach (string d in Directory.GetDirectories(Cfg.PluginsRoot))
                     {
                         string dirName = Path.GetFileName(d);
+                        // 排除内部辅助目录 (共享依赖池等), 不视为插件
+                        if (dirName.StartsWith("_", StringComparison.Ordinal)) continue;
                         bool dis = dirName.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase);
                         string realName = dis ? dirName.Substring(0, dirName.Length - ".disabled".Length) : dirName;
                         var p = new PluginItem
@@ -1203,6 +1213,7 @@ namespace DeepSeekHarness
                             p.RemoteUrl = FirstLine(RunGit(string.Format("-C \"{0}\" config --get remote.origin.url", d), 10000));
                             p.Branch = FirstLine(RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", d), 10000));
                         }
+                        CheckPluginDeps(p);   // 轻量同步检查: 只读文件系统, 不跑网络
                         list.Add(p);
                     }
                 }
@@ -1221,6 +1232,7 @@ namespace DeepSeekHarness
                 foreach (string d in Directory.GetDirectories(root))
                 {
                     string n = Path.GetFileName(d);
+                    if (n.StartsWith("_", StringComparison.Ordinal)) continue;   // 跳过内部目录
                     if (n.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase))
                         n = n.Substring(0, n.Length - ".disabled".Length);
                     if (string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) return true;
@@ -1228,6 +1240,315 @@ namespace DeepSeekHarness
             }
             catch { }
             return false;
+        }
+
+        // ---------- 插件依赖管理 (防止"装完就崩": 缺依赖→服务端插件树崩溃→前端全挂) ----------
+
+        // 共享依赖目录 (junction 池): 插件 node_modules 可指向它复用 dsh 自带依赖
+        static string SharedDepsDir()
+        {
+            try
+            {
+                string cfgRoot = "";
+                // 从当前配置推断插件根目录旁的 _shared-deps
+                var cfg = LauncherConfig.Load();
+                if (!string.IsNullOrEmpty(cfg.PluginsRoot))
+                    cfgRoot = Path.Combine(cfg.PluginsRoot, "_shared-deps");
+                if (Directory.Exists(cfgRoot) || Directory.Exists(Path.GetDirectoryName(cfgRoot))) return cfgRoot;
+            }
+            catch { }
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DeepSeekHarness", "_shared-deps");
+        }
+
+        // 解析插件 package.json 的 dependencies + peerDependencies (轻量 JSON 解析)
+        static Dictionary<string, string> ParsePkgDeps(string pkgJsonPath, bool includePeer)
+        {
+            var deps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (!File.Exists(pkgJsonPath)) return deps;
+                var ser = new JavaScriptSerializer();
+                var d = ser.DeserializeObject(File.ReadAllText(pkgJsonPath)) as Dictionary<string, object>;
+                if (d == null) return deps;
+                Action<string> grab = delegate(string key)
+                {
+                    object v;
+                    if (d.TryGetValue(key, out v) && v is Dictionary<string, object>)
+                    {
+                        foreach (var kv in (Dictionary<string, object>)v)
+                            if (!string.IsNullOrEmpty(kv.Key) && !deps.ContainsKey(kv.Key))
+                                deps[kv.Key] = Convert.ToString(kv.Value);
+                    }
+                };
+                grab("dependencies");
+                if (includePeer) grab("peerDependencies");
+            }
+            catch { }
+            return deps;
+        }
+
+        // 检查某依赖在插件目录下是否可解析 (node_modules 可能是指向共享目录的 junction)
+        static bool DepResolvable(string pluginDir, string dep)
+        {
+            try
+            {
+                string nm = Path.Combine(pluginDir, "node_modules");
+                if (Directory.Exists(Path.Combine(nm, dep))) return true;
+                // scoped 包: @scope/name
+                int slash = dep.IndexOf('/');
+                if (slash > 0)
+                {
+                    string scope = dep.Substring(0, slash);
+                    string name = dep.Substring(slash + 1);
+                    if (Directory.Exists(Path.Combine(nm, scope, name))) return true;
+                }
+                // 共享目录兜底
+                string shared = SharedDepsDir();
+                if (Directory.Exists(Path.Combine(shared, dep))) return true;
+                if (slash > 0)
+                {
+                    string scope2 = dep.Substring(0, slash);
+                    string name2 = dep.Substring(slash + 1);
+                    if (Directory.Exists(Path.Combine(shared, scope2, name2))) return true;
+                }
+                return false;
+            }
+            catch { return false; }
+        }
+
+        // 检查插件依赖完整度, 填充 PluginItem.DepsOk / MissingDeps
+        public void CheckPluginDeps(PluginItem p)
+        {
+            p.DepsChecked = true;
+            p.DepsOk = true;
+            p.MissingDeps = "";
+            try
+            {
+                if (p.Disabled) return;
+                // package.json 可能在插件根目录或子目录 (dsh-vision-toolkit/、injector/、maid-atelier/ 等)
+                string pkgJson = Path.Combine(p.Path, "package.json");
+                if (!File.Exists(pkgJson))
+                {
+                    foreach (string sub in Directory.GetDirectories(p.Path))
+                    {
+                        string cand = Path.Combine(sub, "package.json");
+                        if (File.Exists(cand)) { pkgJson = cand; break; }
+                    }
+                }
+                var deps = ParsePkgDeps(pkgJson, true);
+                if (deps.Count == 0) return;   // 无依赖声明 → 视为 OK
+                var missing = new List<string>();
+                foreach (var kv in deps)
+                {
+                    if (kv.Key == "@deepseek-ai/dsh" || kv.Key == "dsh" || kv.Key == "cordis") continue;   // 宿主包不算
+                    if (!DepResolvable(p.Path, kv.Key)) missing.Add(kv.Key);
+                }
+                if (missing.Count > 0)
+                {
+                    p.DepsOk = false;
+                    p.MissingDeps = string.Join(", ", missing.ToArray());
+                }
+            }
+            catch { }
+        }
+
+        // 探测全局 npm 目录 (npm prefix -g 优先, 其次常见位置)
+        static string FindNpmGlobalDir()
+        {
+            try
+            {
+                string prefix = RunCaptureStatic("npm", "prefix -g", 15000);
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    string p = prefix.Trim().Trim('\r', '\n');
+                    if (Directory.Exists(p)) return p;
+                }
+            }
+            catch { }
+            string[] cands = {
+                @"D:\npm-global",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "npm-global"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm"),
+                @"C:\Program Files\nodejs"
+            };
+            foreach (string c in cands)
+                if (Directory.Exists(Path.Combine(c, "node_modules"))) return c;
+            return "";
+        }
+
+        // 一键修复插件依赖: 缺失依赖优先从共享目录链接, 否则 npm install 补齐
+        public string FixPluginDeps(PluginItem p)
+        {
+            try
+            {
+                CheckPluginDeps(p);
+                if (p.DepsOk) return "依赖已完整";
+                string missing = p.MissingDeps;
+                AppendLog("[plugin] fix deps " + p.Name + " missing: " + missing);
+
+                // 1. 确保共享目录存在, 缺失的公共依赖从全局 dsh 复制链接
+                EnsureSharedDeps();
+                string npmGlobal = FindNpmGlobalDir();
+                string dshDeps = Path.Combine(npmGlobal, "@deepseek-ai", "dsh", "node_modules");
+
+                // 2. 缺失依赖: 优先共享目录/全局 → 无则 npm install
+                var stillMissing = new List<string>();
+                foreach (string dep in missing.Split(','))
+                {
+                    string d = dep.Trim();
+                    if (d.Length == 0) continue;
+                    if (DepResolvable(p.Path, d)) continue;
+                    string shared = Path.Combine(SharedDepsDir(), d);
+                    string globalDep = Path.Combine(npmGlobal, "node_modules", d);
+                    string src = Directory.Exists(globalDep) ? globalDep : (Directory.Exists(Path.Combine(dshDeps, d)) ? Path.Combine(dshDeps, d) : "");
+                    if (src.Length > 0 && !Directory.Exists(shared))
+                    {
+                        try
+                        {
+                            string parent = Path.GetDirectoryName(shared);
+                            if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
+                            cmd_mklink(shared, src);
+                        }
+                        catch { }
+                    }
+                    if (DepResolvable(p.Path, d)) continue;
+                    stillMissing.Add(d);
+                }
+
+                // 3. 剩余缺失: npm install (插件目录内)
+                if (stillMissing.Count > 0)
+                {
+                    string reg = NpmRegArg();
+                    Report("正在为 " + p.Name + " 安装依赖…");
+                    string r = RunCapture("cmd.exe", "/c cd /d \"" + p.Path + "\" && npm install --no-audit --no-fund" + reg, 600000);
+                    if (r == null) return "依赖安装失败: " + string.Join(", ", stillMissing.ToArray()) + "（网络或包源问题）";
+                }
+
+                CheckPluginDeps(p);
+                return p.DepsOk ? "依赖已修复" : "仍有缺失: " + p.MissingDeps;
+            }
+            catch (Exception ex) { return "修复依赖出错: " + ex.Message; }
+        }
+
+        // ---------- 坏插件自动隔离: 修复不了就先禁用, 保证服务能跑 ----------
+        // 扫描缺依赖的插件, 自动挂 .disabled 隔离, 返回隔离清单
+        public List<string> QuarantineBrokenPlugins()
+        {
+            var quarantined = new List<string>();
+            try
+            {
+                if (!Directory.Exists(Cfg.PluginsRoot)) return quarantined;
+                foreach (string d in Directory.GetDirectories(Cfg.PluginsRoot))
+                {
+                    string dirName = Path.GetFileName(d);
+                    if (dirName.StartsWith("_", StringComparison.Ordinal)) continue;
+                    if (dirName.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase)) continue;   // 已隔离
+                    var p = new PluginItem { Name = dirName, Path = d, Disabled = false };
+                    CheckPluginDeps(p);
+                    if (p.DepsChecked && !p.DepsOk)
+                    {
+                        // 尝试自动修复一次
+                        string fixRes = FixPluginDeps(p);
+                        CheckPluginDeps(p);
+                        if (!p.DepsOk)
+                        {
+                            // 修不好 → 隔离
+                            try
+                            {
+                                Directory.Move(d, d + ".disabled");
+                                quarantined.Add(dirName + "（缺: " + p.MissingDeps + "）");
+                                AppendLog("[plugin] QUARANTINED " + dirName + " missing: " + p.MissingDeps);
+                            }
+                            catch (Exception ex)
+                            {
+                                AppendLog("[plugin] quarantine failed " + dirName + ": " + ex.Message);
+                            }
+                        }
+                        else
+                        {
+                            AppendLog("[plugin] auto-fixed deps for " + dirName + " (" + fixRes + ")");
+                        }
+                    }
+                }
+            }
+            catch { }
+            return quarantined;
+        }
+
+        // 生成给玩家的 dsh 修复提示词 (在 dsh 终端里可执行)
+        public static string QuarantineFixHint(string pluginName, string missingDeps)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("插件「" + pluginName + "」因缺少依赖被暂时禁用，服务已正常启动。");
+            sb.AppendLine();
+            sb.AppendLine("在 dsh 中修复依赖后即可重新启用：");
+            sb.AppendLine();
+            if (!string.IsNullOrEmpty(missingDeps))
+            {
+                foreach (string dep in missingDeps.Split(','))
+                {
+                    string d = dep.Trim();
+                    if (d.Length == 0) continue;
+                    sb.AppendLine("  npm install -g " + d);
+                }
+            }
+            sb.AppendLine("  # 或进入插件目录安装全部依赖:");
+            sb.AppendLine("  cd <插件目录> && npm install");
+            sb.AppendLine();
+            sb.AppendLine("修复后重启服务即可恢复该插件。");
+            return sb.ToString();
+        }
+
+        // 确保共享依赖目录存在并预置常用公共依赖 (schemastery/cordis/react 等)
+        void EnsureSharedDeps()
+        {
+            try
+            {
+                string shared = SharedDepsDir();
+                if (!Directory.Exists(shared)) Directory.CreateDirectory(shared);
+                string npmGlobal = FindNpmGlobalDir();
+                string dshDeps = Path.Combine(npmGlobal, "@deepseek-ai", "dsh", "node_modules");
+                string[] common = { "cordis", "schemastery", "react", "react-dom" };
+                foreach (string dep in common)
+                {
+                    string target = Path.Combine(shared, dep);
+                    if (Directory.Exists(target)) continue;
+                    string src = Path.Combine(dshDeps, dep);
+                    if (Directory.Exists(src))
+                    {
+                        try { cmd_mklink(target, src); } catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // 创建目录 junction (跨盘目录链接, 免管理员)
+        static void cmd_mklink(string link, string target)
+        {
+            var psi = new ProcessStartInfo("cmd.exe", "/c mklink /J \"" + link + "\" \"" + target + "\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+            using (var p = Process.Start(psi)) { p.WaitForExit(15000); }
+        }
+
+        // 安装完成后自动补齐依赖 (git/npm 安装后的统一收尾)
+        string EnsurePluginDepsAfterInstall(string pluginDir)
+        {
+            try
+            {
+                var p = new PluginItem { Name = Path.GetFileName(pluginDir), Path = pluginDir };
+                CheckPluginDeps(p);
+                if (p.DepsOk) return "";
+                Report("正在补齐 " + p.Name + " 的依赖…");
+                string res = FixPluginDeps(p);
+                AppendLog("[plugin] deps after install " + p.Name + " -> " + res);
+                return res.StartsWith("依赖已修复") || res.StartsWith("依赖已完整") ? "" : res;
+            }
+            catch { return ""; }
         }
 
         // ---------- 商城拉取 (GitHub 多关键词组合检索 + npm 插件生态 + Awesome 多源聚合) ----------
@@ -1544,7 +1865,10 @@ namespace DeepSeekHarness
             Report("正在克隆插件 " + name + " …");
             string r = RunGit("clone \"" + url + "\" \"" + target + "\"", 300000);
             AppendLog("[plugin] clone " + url + (r == null ? " (超时/失败)" : " 完成"));
-            return r == null ? "克隆失败（网络或地址错误）" : "";
+            if (r != null) return "克隆失败（网络或地址错误）";
+            // 自动补齐依赖, 防止"装完就崩"
+            string depRes = EnsurePluginDepsAfterInstall(target);
+            return depRes;
         }
 
         public string InstallNpmPlugin(string pkg)
@@ -1552,7 +1876,31 @@ namespace DeepSeekHarness
             Report("正在安装插件 " + pkg + " …");
             string r = RunCapture("cmd.exe", "/c npm install -g " + pkg, 300000);
             AppendLog("[plugin] npm install -g " + pkg + (r == null ? " (超时/失败)" : " 完成"));
-            return r == null ? "npm 安装失败（网络或包名错误）" : "";
+            if (r != null) return "npm 安装失败（网络或包名错误）";
+            // npm 全局插件挂到插件目录 (junction 链接), 再补齐依赖
+            try
+            {
+                string npmRoot = RunCapture("cmd.exe", "/c npm root -g", 15000);
+                if (!string.IsNullOrEmpty(npmRoot))
+                {
+                    npmRoot = npmRoot.Trim().Trim('\r', '\n');
+                    string srcDir = Path.Combine(npmRoot, pkg);
+                    if (Directory.Exists(srcDir))
+                    {
+                        string name = pkg.Contains("/") ? pkg.Substring(pkg.LastIndexOf('/') + 1) : pkg;
+                        if (name.StartsWith("@")) name = name.Replace("@", "").Replace("/", "-");
+                        string target = Path.Combine(Cfg.PluginsRoot, name);
+                        if (!Directory.Exists(target) && !File.Exists(target))
+                        {
+                            cmd_mklink(target, srcDir);
+                            string depRes = EnsurePluginDepsAfterInstall(target);
+                            return depRes;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return "";
         }
 
         // 启用/禁用: 目录重命名加 .disabled 后缀, 可逆
@@ -1674,12 +2022,16 @@ namespace DeepSeekHarness
             var results = new List<string>();
             foreach (var p in ScanPlugins())
             {
-                if (p.IsGit)
+                if (p.IsGit || p.Disabled) continue;
+                CheckPluginDeps(p);
+                if (p.DepsOk)
                 {
-                    string r = RunCapture("cmd.exe", "/c cd /d \"" + p.Path + "\" && npm install", 300000);
-                    if (r != null) results.Add(p.Name + " (依赖正常)");
-                    else results.Add(p.Name + " ⚠️ 依赖安装超时");
+                    results.Add(p.Name + " (依赖正常)");
+                    continue;
                 }
+                string r = FixPluginDeps(p);
+                if (r == "依赖已修复" || r == "依赖已完整") results.Add(p.Name + " ✅ 依赖已修复");
+                else results.Add(p.Name + " ⚠️ " + r);
             }
             return results.ToArray();
         }
