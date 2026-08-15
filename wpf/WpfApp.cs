@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 (代码式 WPF, 无 XAML 编译链)
 //  v0.1 骨架: 深色主题 + WindowChrome 无边框窗(原生缩放/吸附) + 侧栏导航 + 切页淡入动画
 //  编译: build.bat (仅用系统自带 csc + GAC WPF 程序集)
@@ -2195,10 +2195,97 @@ namespace DeepSeekHarness
             btnRow.Children.Add(Btn("⚡ " + Lang.T("检测代理"), delegate { DetectProxyFill(); }, false));
             btnRow.Children.Add(Btn("📌 " + Lang.T("桌面快捷方式"), delegate { MakeShortcut(); }, false));
             btnRow.Children.Add(Btn("📄 " + Lang.T("配置文件"), delegate { try { Process.Start("notepad.exe", "\"" + LauncherConfig.ConfigPath + "\""); } catch { } }, false));
+            btnRow.Children.Add(Btn("ℹ️ " + Lang.T("关于"), delegate { ShowAbout(); }, false));
             stack.Children.Add(btnRow);
 
             scroll.Content = stack;
             return pg;
+        }
+
+        // ---------- 关于对话框 (中英双语介绍) ----------
+        void ShowAbout()
+        {
+            var w = new Window
+            {
+                Title = Lang.T("关于"),
+                Width = 560,
+                MinWidth = 500,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                WindowStyle = WindowStyle.ToolWindow,
+                ResizeMode = ResizeMode.NoResize,
+                Background = Palette.Brush(Palette.Bg)
+            };
+            var g = new Grid { Margin = new Thickness(24) };
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            // 头部: Logo + 名称 + 版本
+            var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+            ImageSource whale = LoadEmbeddedPng(Palette.IsDark ? "DeepSeekHarness.whale-white.png" : "DeepSeekHarness.whale-blue.png");
+            if (whale != null)
+            {
+                var logoBox = new Border
+                {
+                    Width = 44, Height = 44, CornerRadius = new CornerRadius(12),
+                    Background = Palette.BlueGradient(), VerticalAlignment = VerticalAlignment.Center
+                };
+                logoBox.Child = new System.Windows.Controls.Image { Source = whale, Width = 28, Height = 28, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                head.Children.Add(logoBox);
+            }
+            var headText = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+            headText.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 16, FontWeight = FontWeights.Bold });
+            headText.Children.Add(new TextBlock { Text = "v1.0.1 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
+            head.Children.Add(headText);
+            Grid.SetRow(head, 0);
+            g.Children.Add(head);
+
+            // 中英双语介绍
+            var body = new StackPanel();
+            string zh = "一个专门为 DeepSeek Harness (dsh) 打造的傻瓜式管理工具：\n" +
+                "· 一键检测环境、安装 dsh，新手也能 5 分钟跑起来\n" +
+                "· 图形化管理插件：安装、更新、修复依赖、启用禁用、一键维护\n" +
+                "· 启动器 / dsh / 插件 三维更新看板，自动检查，一键升级\n" +
+                "· 插件商城聚合 GitHub + npm + Awesome 数百插件\n" +
+                "· 自动代理探测 + 国内镜像兜底，网络再差也能装\n" +
+                "· 深色/浅色双主题，中英日韩俄法德西 8 种语言";
+            string en = "A fool-proof manager built for DeepSeek Harness (dsh):\n" +
+                "· One-click environment detection & dsh installation\n" +
+                "· Visual plugin management: install, update, fix deps, toggle, maintain\n" +
+                "· 3-way update board (launcher / dsh / plugins) with auto-check\n" +
+                "· Plugin store aggregating GitHub + npm + awesome lists\n" +
+                "· Auto proxy detection with China mirror fallbacks\n" +
+                "· Dark/light themes, 8 languages";
+
+            string show = (Lang.Code == "zh" || Lang.Code == "") ? zh : en;
+            if (Lang.Code != "zh" && Lang.Code != "" && Lang.Code != "en")
+            {
+                // 其他语言: 显示英文为主 + 中文对照
+                show = "🇨🇳 " + zh + "\n\n🇺🇸 " + en;
+            }
+            var bodyTb = new TextBlock
+            {
+                Text = show,
+                Foreground = Palette.Brush(Palette.TextDim),
+                FontSize = 13,
+                LineHeight = 21,
+                TextWrapping = TextWrapping.Wrap
+            };
+            body.Children.Add(bodyTb);
+            Grid.SetRow(body, 1);
+            g.Children.Add(body);
+
+            var okBtn = Btn(Lang.T("我知道了"), delegate { w.DialogResult = true; }, true);
+            okBtn.Width = 110;
+            var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
+            row.Children.Add(okBtn);
+            Grid.SetRow(row, 2);
+            g.Children.Add(row);
+
+            w.Content = g;
+            w.ShowDialog();
         }
 
         ModernDropdown setLang;
