@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 · 逻辑层
 //  从 WinForms 版移植: 命令助手 / 配置 / 环境检测 / 代理 / 服务 / 插件 / 商城 / 更新
 //  全部 UI 无关; 通过 OnStatus / OnLog 回调向界面汇报
@@ -63,7 +63,12 @@ namespace DeepSeekHarness
             { "重启服务", "Restart" }, { "滚轮滚动 · 完整日志在「日志」页", "Scroll · full log in Logs" },
             { "桌面快捷方式", "Desktop Shortcut" }, { "检测代理", "Detect Proxy" }, { "选择文件", "Browse" },
             { "服务已在运行", "Service running" }, { "界面主题", "Theme" }, { "深色模式 (Dark)", "Dark Mode" }, { "浅色模式 (Light)", "Light Mode" },
-            { "清空显示", "Clear Log" }, { "复制日志", "Copy Log" }, { "搜索过滤…", "Filter logs…" }, { "已复制到剪贴板", "Copied to clipboard" }
+            { "清空显示", "Clear Log" }, { "复制日志", "Copy Log" }, { "搜索过滤…", "Filter logs…" }, { "已复制到剪贴板", "Copied to clipboard" },
+            { "{0} 个插件", "{0} plugins" }, { "正在检查…", "Checking…" }, { "正在更新所有插件…", "Updating all plugins…" },
+            { "核心服务与路径", "Core & Paths" }, { "网络、包源与更新", "Network, Registry & Updates" }, { "界面外观与个性化", "Appearance & Language" },
+            { "配置文件", "Config File" },
+            { "全部最新", "All up to date" }, { "一键维护中…", "Maintaining…" },
+            { "升级 dsh", "Upgrade dsh" }, { "dsh 已升级到最新版。", "dsh is now up to date." }
         };
 
         static Dictionary<string, string> ja = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -73,27 +78,125 @@ namespace DeepSeekHarness
             { "一键启动", "起動" }, { "停止服务", "停止" }, { "一键安装", "インストール" },
             { "服务运行中", "サービス稼働中" }, { "服务未启动", "サービス停止中" },
             { "保存设置", "保存" }, { "界面语言", "表示言語" }, { "界面主题", "テーマ" },
-            { "深色模式 (Dark)", "ダークモード" }, { "浅色模式 (Light)", "ライトモード" }
+            { "深色模式 (Dark)", "ダークモード" }, { "浅色模式 (Light)", "ライトモード" },
+            { "重启服务", "再起動" }, { "打开浏览器", "ブラウザを開く" }, { "正在检查…", "確認中…" },
+            { "已是最新", "最新です" }, { "插件商城", "プラグインストア" }, { "启动器", "ランチャー" },
+            { "运行环境", "実行環境" }, { "最近日志", "最近のログ" }, { "刷新列表", "更新" },
+            { "代理", "プロキシ" }, { "{0} 个插件", "{0} プラグイン" },
+            { "核心服务与路径", "コアとパス" }, { "网络、包源与更新", "ネットワーク・レジストリ・更新" }, { "界面外观与个性化", "外観と言語" }, { "配置文件", "設定ファイル" },
+            { "未检测到 Node.js", "Node.js が見つかりません" }, { "未检测到 dsh", "dsh が見つかりません" },
+            { "未检测到", "見つかりません" }, { "首次使用请点击「一键安装」", "初回は「インストール」をクリック" },
+            { "直连", "ダイレクト" }, { "已是最新版本", "最新バージョンです" }, { "发现新版本！", "新しいバージョンがあります！" },
+            { "服务已在运行", "サービスは実行中です" }
+        };
+
+        static Dictionary<string, string> ko = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "概览", "개요" }, { "环境", "환경" }, { "插件", "플러그인" },
+            { "更新", "업데이트" }, { "日志", "로그" }, { "设置", "설정" },
+            { "一键启动", "시작" }, { "停止服务", "중지" }, { "一键安装", "설치" },
+            { "服务运行中", "서비스 실행 중" }, { "服务未启动", "서비스 중지됨" },
+            { "保存设置", "저장" }, { "界面语言", "언어" }, { "界面主题", "테마" },
+            { "深色模式 (Dark)", "다크 모드" }, { "浅色模式 (Light)", "라이트 모드" },
+            { "重启服务", "재시작" }, { "打开浏览器", "브라우저 열기" }, { "正在检查…", "확인 중…" },
+            { "已是最新", "최신입니다" }, { "插件商城", "플러그인 스토어" }, { "启动器", "런처" },
+            { "运行环境", "실행 환경" }, { "最近日志", "최근 로그" }, { "刷新列表", "새로 고침" },
+            { "代理", "프록시" }, { "{0} 个插件", "{0} 플러그인" },
+            { "核心服务与路径", "핵심 서비스 및 경로" }, { "网络、包源与更新", "네트워크·레지스트리·업데이트" }, { "界面外观与个性化", "외관 및 언어" }, { "配置文件", "구성 파일" },
+            { "未检测到 Node.js", "Node.js를 찾을 수 없음" }, { "未检测到 dsh", "dsh를 찾을 수 없음" },
+            { "未检测到", "찾을 수 없음" }, { "首次使用请点击「一键安装」", "처음이면 「설치」를 클릭하세요" },
+            { "直连", "직접 연결" }, { "已是最新版本", "최신 버전입니다" }, { "发现新版本！", "새 버전이 있습니다!" },
+            { "服务已在运行", "서비스가 실행 중입니다" }
+        };
+
+        static Dictionary<string, string> ru = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "概览", "Обзор" }, { "环境", "Среда" }, { "插件", "Плагины" },
+            { "更新", "Обновления" }, { "日志", "Журнал" }, { "设置", "Настройки" },
+            { "一键启动", "Запуск" }, { "停止服务", "Стоп" }, { "一键安装", "Установить" },
+            { "服务运行中", "Сервис работает" }, { "服务未启动", "Сервис остановлен" },
+            { "保存设置", "Сохранить" }, { "界面语言", "Язык" }, { "界面主题", "Тема" },
+            { "深色模式 (Dark)", "Тёмная тема" }, { "浅色模式 (Light)", "Светлая тема" },
+            { "重启服务", "Перезапуск" }, { "打开浏览器", "Открыть браузер" }, { "正在检查…", "Проверка…" },
+            { "已是最新", "Актуально" }, { "插件商城", "Магазин плагинов" }, { "启动器", "Лаунчер" },
+            { "运行环境", "Среда выполнения" }, { "最近日志", "Последний журнал" }, { "刷新列表", "Обновить" },
+            { "代理", "Прокси" }, { "{0} 个插件", "{0} плагинов" },
+            { "核心服务与路径", "Ядро и пути" }, { "网络、包源与更新", "Сеть, реестр и обновления" }, { "界面外观与个性化", "Внешний вид и язык" }, { "配置文件", "Файл конфигурации" },
+            { "未检测到 Node.js", "Node.js не найден" }, { "未检测到 dsh", "dsh не найден" },
+            { "未检测到", "не найден" }, { "首次使用请点击「一键安装」", "Впервые? Нажмите «Установить»" },
+            { "直连", "Прямое подключение" }, { "已是最新版本", "Уже актуально" }, { "发现新版本！", "Доступна новая версия!" },
+            { "服务已在运行", "Сервис уже работает" }
+        };
+
+        static Dictionary<string, string> fr = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "概览", "Aperçu" }, { "环境", "Environnement" }, { "插件", "Plugins" },
+            { "更新", "Mises à jour" }, { "日志", "Journal" }, { "设置", "Paramètres" },
+            { "一键启动", "Démarrer" }, { "停止服务", "Arrêter" }, { "一键安装", "Installer" },
+            { "服务运行中", "Service en cours" }, { "服务未启动", "Service arrêté" },
+            { "保存设置", "Enregistrer" }, { "界面语言", "Langue" }, { "界面主题", "Thème" },
+            { "深色模式 (Dark)", "Mode sombre" }, { "浅色模式 (Light)", "Mode clair" },
+            { "重启服务", "Redémarrer" }, { "打开浏览器", "Ouvrir le navigateur" }, { "正在检查…", "Vérification…" },
+            { "已是最新", "À jour" }, { "插件商城", "Boutique de plugins" }, { "启动器", "Lanceur" },
+            { "运行环境", "Environnement d'exécution" }, { "最近日志", "Journal récent" }, { "刷新列表", "Actualiser" },
+            { "代理", "Proxy" }, { "{0} 个插件", "{0} plugins" }
+        };
+
+        static Dictionary<string, string> de = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "概览", "Übersicht" }, { "环境", "Umgebung" }, { "插件", "Plugins" },
+            { "更新", "Updates" }, { "日志", "Protokoll" }, { "设置", "Einstellungen" },
+            { "一键启动", "Starten" }, { "停止服务", "Stoppen" }, { "一键安装", "Installieren" },
+            { "服务运行中", "Dienst läuft" }, { "服务未启动", "Dienst gestoppt" },
+            { "保存设置", "Speichern" }, { "界面语言", "Sprache" }, { "界面主题", "Design" },
+            { "深色模式 (Dark)", "Dunkelmodus" }, { "浅色模式 (Light)", "Hellmodus" },
+            { "重启服务", "Neustart" }, { "打开浏览器", "Browser öffnen" }, { "正在检查…", "Prüfe…" },
+            { "已是最新", "Aktuell" }, { "插件商城", "Plugin-Shop" }, { "启动器", "Launcher" },
+            { "运行环境", "Laufzeitumgebung" }, { "最近日志", "Letztes Protokoll" }, { "刷新列表", "Aktualisieren" },
+            { "代理", "Proxy" }, { "{0} 个插件", "{0} Plugins" }
+        };
+
+        static Dictionary<string, string> es = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "概览", "Resumen" }, { "环境", "Entorno" }, { "插件", "Plugins" },
+            { "更新", "Actualizaciones" }, { "日志", "Registro" }, { "设置", "Ajustes" },
+            { "一键启动", "Iniciar" }, { "停止服务", "Detener" }, { "一键安装", "Instalar" },
+            { "服务运行中", "Servicio activo" }, { "服务未启动", "Servicio detenido" },
+            { "保存设置", "Guardar" }, { "界面语言", "Idioma" }, { "界面主题", "Tema" },
+            { "深色模式 (Dark)", "Modo oscuro" }, { "浅色模式 (Light)", "Modo claro" },
+            { "重启服务", "Reiniciar" }, { "打开浏览器", "Abrir navegador" }, { "正在检查…", "Comprobando…" },
+            { "已是最新", "Actualizado" }, { "插件商城", "Tienda de plugins" }, { "启动器", "Lanzador" },
+            { "运行环境", "Entorno de ejecución" }, { "最近日志", "Registro reciente" }, { "刷新列表", "Actualizar" },
+            { "代理", "Proxy" }, { "{0} 个插件", "{0} plugins" }
         };
 
         public static void Set(string code)
         {
-            if (code == "en" || code == "ja") Code = code;
+            if (code == "en" || code == "ja" || code == "ko" || code == "ru" || code == "fr" || code == "de" || code == "es")
+                Code = code;
             else Code = "zh";
+        }
+
+        static Dictionary<string, string> GetDict()
+        {
+            if (Code == "en") return en;
+            if (Code == "ja") return ja;
+            if (Code == "ko") return ko;
+            if (Code == "ru") return ru;
+            if (Code == "fr") return fr;
+            if (Code == "de") return de;
+            if (Code == "es") return es;
+            return null;
         }
 
         public static string T(string zh)
         {
-            if (Code == "en")
-            {
-                string v;
-                return en.TryGetValue(zh, out v) ? v : zh;
-            }
-            if (Code == "ja")
-            {
-                string v;
-                return ja.TryGetValue(zh, out v) ? v : (en.TryGetValue(zh, out v) ? v : zh);
-            }
+            var d = GetDict();
+            if (d == null) return zh;
+            string v;
+            if (d.TryGetValue(zh, out v)) return v;
+            string ev;
+            if (en.TryGetValue(zh, out ev)) return ev;   // 缺失词条回退英文
             return zh;
         }
     }
