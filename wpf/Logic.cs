@@ -1036,7 +1036,8 @@ namespace DeepSeekHarness
                     foreach (string dir in Directory.GetDirectories(Cfg.PluginsRoot))
                     {
                         if (!Directory.Exists(Path.Combine(dir, ".git"))) continue;
-                        // 按本地当前分支对比远程同名分支, 避免本地分支≠远程HEAD导致误报"可更新"
+                        string name = Path.GetFileName(dir);
+                        // 按本地当前分支对比远程同名分支
                         string branch = FirstLine(RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", dir), 10000));
                         if (string.IsNullOrEmpty(branch)) continue;
                         string remote = RunGit(string.Format("-C \"{0}\" ls-remote origin {1}", dir, branch), 20000);
@@ -1046,8 +1047,18 @@ namespace DeepSeekHarness
                             string[] parts = remote.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                             string rh = parts.Length > 0 ? parts[0] : "";
                             string lh = local.Trim();
-                            string name = Path.GetFileName(dir);
                             if (rh.Length >= 7 && !rh.Equals(lh, StringComparison.OrdinalIgnoreCase))
+                                names.Add(name);
+                            continue;
+                        }
+                        // 本地分支与远程无同名分支 (如本地 master / 远程 main): 对比远程默认分支 HEAD
+                        string remoteHead = RunGit(string.Format("-C \"{0}\" ls-remote origin HEAD", dir), 20000);
+                        if (remoteHead != null && local != null)
+                        {
+                            string[] hp = remoteHead.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                            string rhh = hp.Length > 0 ? hp[0] : "";
+                            string lh2 = local.Trim();
+                            if (rhh.Length >= 7 && !rhh.Equals(lh2, StringComparison.OrdinalIgnoreCase))
                                 names.Add(name);
                         }
                     }
@@ -1487,22 +1498,56 @@ namespace DeepSeekHarness
         // 智能更新单个插件: 只有远程确实有可拉取的提交才执行 pull, 否则明确报告"已是最新", 绝不误报失败
         public string PullPlugin(PluginItem p)
         {
-            // 1. 是否有远程跟踪分支
+            string branch = FirstLine(RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", p.Path), 10000));
+            if (string.IsNullOrEmpty(branch)) branch = "HEAD";
+
+            // 1. 有远程跟踪分支: 按上游判断
             string upstream = RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref --symbolic-full-name @{{u}}", p.Path), 10000);
-            if (upstream == null)
-                return "无远程跟踪分支（跳过）";
-            // 2. 远程是否真有新提交 (HEAD 落后于上游的提交数)
-            string behind = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..@{{u}}", p.Path), 10000);
-            if (behind == null) return "检查远程状态失败";
-            int n;
-            behind = behind.Trim();
-            if (!int.TryParse(behind, out n) || n <= 0)
-                return "已是最新";
-            // 3. 确实有更新才执行 pull (快进模式, 避免产生 merge 提交)
-            string r = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
-            AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成") + " ahead=" + n);
-            if (r == null) return "拉取失败（网络或冲突）";
-            return "已更新至最新";
+            if (upstream != null)
+            {
+                string behind = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..@{{u}}", p.Path), 10000);
+                int n = 0;
+                behind = (behind ?? "").Trim();
+                if (behind.Length > 0 && int.TryParse(behind, out n) && n <= 0)
+                    return "已是最新";
+                if (behind.Length == 0)
+                {
+                    // 无法读取落后数 → 保守: 尝试快速拉取
+                    string r0 = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
+                    if (r0 == null) return "拉取失败（网络或冲突）";
+                    return "已更新至最新";
+                }
+                string r = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
+                AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成") + " ahead=" + n);
+                if (r == null) return "拉取失败（网络或冲突）";
+                return "已更新至最新";
+            }
+
+            // 2. 无上游跟踪分支 (如本地 master / 远程 main): 对比远程默认分支 HEAD
+            string remote = RunGit(string.Format("-C \"{0}\" ls-remote origin HEAD", p.Path), 20000);
+            string local = RunGit(string.Format("-C \"{0}\" rev-parse HEAD", p.Path), 10000);
+            if (remote != null && local != null)
+            {
+                string[] parts = remote.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                string rh = parts.Length > 0 ? parts[0] : "";
+                string lh = local.Trim();
+                if (rh.Length >= 7 && rh.Equals(lh, StringComparison.OrdinalIgnoreCase))
+                    return "已是最新";   // 本地与远程默认分支一致 → 就是最新的, 不报失败
+
+                // 远程有不同提交: 尝试 fetch + fast-forward (不依赖分支名一致)
+                string fetched = RunGit(string.Format("-C \"{0}\" fetch origin", p.Path), 60000);
+                if (fetched == null) return "拉取失败（网络或冲突）";
+                string behind2 = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..FETCH_HEAD", p.Path), 10000);
+                int n2;
+                behind2 = (behind2 ?? "").Trim();
+                if (behind2.Length > 0 && int.TryParse(behind2, out n2) && n2 <= 0)
+                    return "已是最新";   // fetch 后发现其实没有落后
+                string r2 = RunGit(string.Format("-C \"{0}\" merge --ff-only FETCH_HEAD", p.Path), 60000);
+                if (r2 == null) return "拉取失败（本地有改动或冲突）";
+                return "已更新至最新";
+            }
+
+            return "无法连接远程仓库";
         }
 
         // 一键维护: 更新所有 git 插件 (仅真正有更新的执行 pull, 已最新明确显示, 绝不误报失败)
