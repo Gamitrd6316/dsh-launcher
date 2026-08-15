@@ -847,7 +847,7 @@ namespace DeepSeekHarness
             pg.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             var head = new TextBlock
             {
-                Text = "概览",
+                Text = Lang.T("概览"),
                 Foreground = Palette.Brush(Palette.Text),
                 FontSize = 20,
                 FontWeight = FontWeights.SemiBold,
@@ -1174,8 +1174,8 @@ namespace DeepSeekHarness
                 ovChips.Children.Add(Chip("Node " + (nodeOk ? "✓" : "✗"), nodeOk ? Palette.Success : Palette.Warn));
                 ovChips.Children.Add(Chip("npm " + (string.IsNullOrEmpty(env.NpmPath) ? "✗" : "✓"), string.IsNullOrEmpty(env.NpmPath) ? Palette.Warn : Palette.Success));
                 ovChips.Children.Add(Chip("git " + (string.IsNullOrEmpty(env.GitPath) ? "✗" : "✓"), string.IsNullOrEmpty(env.GitPath) ? Palette.Warn : Palette.Success));
-                ovChips.Children.Add(Chip(Lang.T("插件") + " " + env.PluginDirs + " 个", Palette.TextDim));
-                ovChips.Children.Add(Chip(string.IsNullOrEmpty(lastProxy) ? Lang.T("直连") : "代理 " + lastProxy, string.IsNullOrEmpty(lastProxy) ? Palette.TextFaint : Palette.BlueLight));
+                ovChips.Children.Add(Chip(string.Format(Lang.T("{0} 个插件"), env.PluginDirs), Palette.TextDim));
+                ovChips.Children.Add(Chip(string.IsNullOrEmpty(lastProxy) ? Lang.T("直连") : Lang.T("代理") + " " + lastProxy, string.IsNullOrEmpty(lastProxy) ? Palette.TextFaint : Palette.BlueLight));
             }
             // 停止/重启按钮: 仅服务运行时显示
             if (ovStop != null) ovStop.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
@@ -2105,11 +2105,12 @@ namespace DeepSeekHarness
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 5)
             };
-            setLang.SetItems(new string[] { "🌐 跟随系统 (Auto)", "🇨🇳 简体中文", "🇺🇸 English", "🇯🇵 日本語" },
-                dsh.Cfg.Language == "zh" ? 1 : (dsh.Cfg.Language == "en" ? 2 : (dsh.Cfg.Language == "ja" ? 3 : 0)));
+            setLang.SetItems(new string[] { "🌐 跟随系统 (Auto)", "🇨🇳 简体中文", "🇺🇸 English", "🇯🇵 日本語", "🇰🇷 한국어", "🇷🇺 Русский", "🇫🇷 Français", "🇩🇪 Deutsch", "🇪🇸 Español" },
+                dsh.Cfg.Language == "zh" ? 1 : (dsh.Cfg.Language == "en" ? 2 : (dsh.Cfg.Language == "ja" ? 3 : (dsh.Cfg.Language == "ko" ? 4 : (dsh.Cfg.Language == "ru" ? 5 : (dsh.Cfg.Language == "fr" ? 6 : (dsh.Cfg.Language == "de" ? 7 : (dsh.Cfg.Language == "es" ? 8 : 0))))))));
             setLang.SelectionChanged += delegate
             {
-                string code = setLang.SelectedIndex == 1 ? "zh" : (setLang.SelectedIndex == 2 ? "en" : (setLang.SelectedIndex == 3 ? "ja" : ""));
+                int si = setLang.SelectedIndex;
+                string code = si == 1 ? "zh" : (si == 2 ? "en" : (si == 3 ? "ja" : (si == 4 ? "ko" : (si == 5 ? "ru" : (si == 6 ? "fr" : (si == 7 ? "de" : (si == 8 ? "es" : "")))))));
                 if (dsh.Cfg.Language != code)
                 {
                     dsh.Cfg.Language = code;
@@ -2192,7 +2193,8 @@ namespace DeepSeekHarness
             dsh.Cfg.LauncherUpdateUrl = setBoxes["lup"].Text.Trim();
             dsh.Cfg.Proxy = setBoxes["proxy"].Text.Trim();
             dsh.Cfg.NpmRegistry = setBoxes["npmreg"].Text.Trim();
-            dsh.Cfg.Language = setLang.SelectedIndex == 1 ? "zh" : (setLang.SelectedIndex == 2 ? "en" : "");
+            int langSi = setLang != null ? setLang.SelectedIndex : 0;
+            dsh.Cfg.Language = langSi == 1 ? "zh" : (langSi == 2 ? "en" : (langSi == 3 ? "ja" : (langSi == 4 ? "ko" : (langSi == 5 ? "ru" : (langSi == 6 ? "fr" : (langSi == 7 ? "de" : (langSi == 8 ? "es" : "")))))));
             dsh.Cfg.ApplyDefaults();
             if (dsh.Cfg.Save())
             {
