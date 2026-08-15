@@ -257,7 +257,7 @@ namespace DeepSeekHarness
             stack.Children.Add(logoEl);
             stack.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 19, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) });
             stack.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF 旗舰版"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
-            stack.Children.Add(new TextBlock { Text = "v1.0.2 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
+            stack.Children.Add(new TextBlock { Text = "v1.0.3 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
             // 加载动画条
             var bar = new Border { Height = 4, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.BgInput), Margin = new Thickness(30, 16, 30, 0) };
             var fill = new Border { Width = 60, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Left };
@@ -404,6 +404,7 @@ namespace DeepSeekHarness
         // 环境页
         StackPanel envRows;
         Button envRedetect, envInstall;
+        Border envGuideCard;
         // 插件页
         StackPanel pluginRows;
         TextBlock pluginSummary;
@@ -418,7 +419,7 @@ namespace DeepSeekHarness
         bool IsLauncherNewer()
         {
             Version cur, latest;
-            if (!Version.TryParse("1.0.2", out cur)) return false;
+            if (!Version.TryParse("1.0.3", out cur)) return false;
             if (!Version.TryParse(lupLatestStr, out latest)) return false;
             return latest > cur;
         }
@@ -458,11 +459,39 @@ namespace DeepSeekHarness
             chrome.UseAeroCaptionButtons = false;
             WindowChrome.SetWindowChrome(this, chrome);
 
+            // 最小化→恢复后强制重新合成 (Win11 22H2 合成器缓存失效的防御)
+            StateChanged += delegate
+            {
+                if (WindowState == WindowState.Normal && !IsVisible)
+                {
+                    // 从最小化恢复时确保重绘
+                    try
+                    {
+                        var ui = Content as UIElement;
+                        if (ui != null)
+                        {
+                            Dispatcher.BeginInvoke(new Action(delegate
+                            {
+                                UpdateLayout();
+                                InvalidateVisual();
+                                ui.RenderTransform = new TranslateTransform(0, 0.01);
+                                ui.RenderTransform = null;
+                                UpdateLayout();
+                            }), System.Windows.Threading.DispatcherPriority.Background);
+                        }
+                    }
+                    catch { }
+                }
+            };
+
             BuildUi();
             // 启动过渡动画: 窗口淡入 (WPF 合成器 GPU 播放)
             Opacity = 0.0;
             var fade = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(220));
             fade.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            // 动画完成后释放动画句柄: 否则 Opacity 被动画值永久"钉住",
+            // 最小化/恢复时合成器缓存失效导致部分区域(侧边栏/标题栏)不重绘(点交互才恢复)
+            fade.Completed += delegate { BeginAnimation(UIElement.OpacityProperty, null); Opacity = 1.0; };
             BeginAnimation(UIElement.OpacityProperty, fade);
             Loaded += delegate
             {
@@ -686,7 +715,7 @@ namespace DeepSeekHarness
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            badge.Child = new TextBlock { Text = "v1.0.2", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
+            badge.Child = new TextBlock { Text = "v1.0.3", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
             brand.Children.Add(title);
             brand.Children.Add(badge);
 
@@ -832,7 +861,7 @@ namespace DeepSeekHarness
 
             sbRight = new TextBlock
             {
-                Text = "端口 8099 · 启动器 v1.0.2 (WPF)",
+                Text = "端口 8099 · 启动器 v1.0.3 (WPF)",
                 Foreground = Palette.Brush(Palette.TextFaint),
                 FontSize = 12,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -1221,7 +1250,7 @@ namespace DeepSeekHarness
                 sbDot.Effect = running ? Palette.GlowEffect(Palette.Success, 0.7) : null;
                 sbText.Text = running ? Lang.T("服务已在运行") : Lang.T("服务未启动");
             }
-            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.2 (WPF)"), dsh.Cfg.Port);
+            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.3 (WPF)"), dsh.Cfg.Port);
             }
             catch { }
         }
@@ -1396,10 +1425,145 @@ namespace DeepSeekHarness
             toolbar.Children.Add(envRedetect);
             toolbar.Children.Add(envInstall);
             stack.Children.Add(toolbar);
+
+            // 智能引导卡: dsh 未找到时引导用户 (已安装/未安装 + 多种定位方式)
+            var guideCard = new Border
+            {
+                Background = Palette.CardGradient(),
+                BorderBrush = Palette.CardBorderBrush(),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(20, 16, 20, 16),
+                Margin = new Thickness(0, 12, 0, 0),
+                Effect = Palette.CardShadow(),
+                Visibility = Visibility.Collapsed
+            };
+            var guideStack = new StackPanel();
+            guideStack.Children.Add(new TextBlock
+            {
+                Text = "🤔 " + Lang.T("未检测到 dsh，请选择你的情况"),
+                Foreground = Palette.Brush(Palette.Text),
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+            guideStack.Children.Add(new TextBlock
+            {
+                Text = Lang.T("如果电脑上已经装过 dsh，选「已安装」让软件自动帮你找到它；没装过就点「一键安装」。"),
+                Foreground = Palette.Brush(Palette.TextDim),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+            var guideBtns = new StackPanel { Orientation = Orientation.Horizontal };
+            guideBtns.Children.Add(Btn("✅ " + Lang.T("我已安装 dsh"), delegate { SmartLocateDsh(); }, false));
+            guideBtns.Children.Add(Btn("🆕 " + Lang.T("一键安装"), delegate { RunInstall(); }, true));
+            guideStack.Children.Add(guideBtns);
+            // 高级定位: 精确文件 / 模糊目录
+            var advBtns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            advBtns.Children.Add(Btn("📂 " + Lang.T("手动选择 dsh 文件"), delegate { PickDshFile(); }, false));
+            advBtns.Children.Add(Btn("🗂 " + Lang.T("指定目录自动查找"), delegate { ScanDirForDsh(); }, false));
+            guideStack.Children.Add(advBtns);
+            guideCard.Child = guideStack;
+            envGuideCard = guideCard;
+            stack.Children.Add(guideCard);
+
             envRows = new StackPanel();
             stack.Children.Add(Card(envRows));
             scroll.Content = stack;
             return pg;
+        }
+
+        // 智能定位 dsh: 深度扫描 → 找到则应用并重新检测, 找不到提示手动方式
+        void SmartLocateDsh()
+        {
+            sbText.Text = "正在智能查找 dsh…";
+            var t = new Thread(delegate()
+            {
+                string found = dsh.DeepFindDsh();
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (found.Length > 0)
+                    {
+                        dsh.Cfg.DshCommand = found;
+                        dsh.Cfg.Save();
+                        sbText.Text = "已找到 dsh: " + found;
+                        RunDetect();
+                        ShowModernInfo(this, Lang.T("已找到 dsh"), "已定位到 dsh：\n" + found);
+                    }
+                    else
+                    {
+                        sbText.Text = "未找到 dsh";
+                        ShowModernWarn(this, Lang.T("未找到 dsh"),
+                            "自动扫描没有找到 dsh。\n\n你可以：\n1. 点「手动选择 dsh 文件」直接指定 dsh.cmd 的位置\n2. 点「指定目录自动查找」告诉软件去哪个文件夹里找\n3. 如果确实没装过，点「一键安装」");
+                    }
+                }));
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        // 手动选择 dsh 可执行文件 (文件选择器)
+        void PickDshFile()
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = Lang.T("选择 dsh 可执行文件 (dsh.cmd / dsh.exe)"),
+                    Filter = "dsh 可执行文件|dsh.cmd;dsh.exe;dsh|所有文件|*.*",
+                    CheckFileExists = true
+                };
+                if (dlg.ShowDialog(this) == true)
+                {
+                    dsh.Cfg.DshCommand = dlg.FileName;
+                    dsh.Cfg.Save();
+                    sbText.Text = "已指定 dsh: " + dlg.FileName;
+                    RunDetect();
+                }
+            }
+            catch { }
+        }
+
+        // 指定一个目录, 自动递归查找 dsh
+        void ScanDirForDsh()
+        {
+            try
+            {
+                var dlg = new System.Windows.Forms.FolderBrowserDialog
+                {
+                    Description = Lang.T("选择包含 dsh 的文件夹（软件会自动搜索）"),
+                    ShowNewFolderButton = false
+                };
+                if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    string root = dlg.SelectedPath;
+                    sbText.Text = "正在搜索 " + root + " …";
+                    var t = new Thread(delegate()
+                    {
+                        string found = Dsh.FindDshInTree(root, 5);
+                        Dispatcher.BeginInvoke(new Action(delegate
+                        {
+                            if (found.Length > 0)
+                            {
+                                dsh.Cfg.DshCommand = found;
+                                dsh.Cfg.Save();
+                                sbText.Text = "已找到 dsh: " + found;
+                                RunDetect();
+                                ShowModernInfo(this, Lang.T("已找到 dsh"), "已定位到 dsh：\n" + found);
+                            }
+                            else
+                            {
+                                sbText.Text = "该目录未找到 dsh";
+                                ShowModernWarn(this, Lang.T("未找到 dsh"), "在所选目录中未找到 dsh，请确认路径正确或尝试其他方式。");
+                            }
+                        }));
+                    });
+                    t.IsBackground = true;
+                    t.Start();
+                }
+            }
+            catch { }
         }
 
         void RenderEnv()
@@ -1407,6 +1571,9 @@ namespace DeepSeekHarness
             if (envRows == null) return;
             envRows.Children.Clear();
             var env = dsh.Env;
+            bool dshMissing = string.IsNullOrEmpty(env.DshPath);
+            if (envGuideCard != null)
+                envGuideCard.Visibility = dshMissing ? Visibility.Visible : Visibility.Collapsed;
             string[] names = { "Node.js", "npm", "Git", "dsh" };
             string[] vers = { env.NodeVersion, env.NpmVersion, CleanVer(env.GitVersion), env.DshVersion };
             string[] paths = { env.NodePath, env.NpmPath, env.GitPath, env.DshPath };
@@ -1790,7 +1957,7 @@ namespace DeepSeekHarness
             lupTitleRow.Children.Add(new TextBlock { Text = "🚀 ", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
             lupTitleRow.Children.Add(new TextBlock { Text = Lang.T("启动器") + " (Launcher)", Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             lupCol.Children.Add(lupTitleRow);
-            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.2", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.3", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
             upLupLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
             upLupNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
             lupCol.Children.Add(upLupCur);
@@ -2248,7 +2415,7 @@ namespace DeepSeekHarness
             }
             var headText = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
             headText.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 16, FontWeight = FontWeights.Bold });
-            headText.Children.Add(new TextBlock { Text = "v1.0.2 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
+            headText.Children.Add(new TextBlock { Text = "v1.0.3 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
             head.Children.Add(headText);
             Grid.SetRow(head, 0);
             g.Children.Add(head);
@@ -2617,7 +2784,7 @@ namespace DeepSeekHarness
                 // 头部小标题
                 var head = new Grid { Margin = new Thickness(10, 3, 10, 4) };
                 var headTitle = new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 11, FontWeight = FontWeights.Bold };
-                var headVer = new TextBlock { Text = "v1.0.2", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
+                var headVer = new TextBlock { Text = "v1.0.3", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
                 head.Children.Add(headTitle);
                 head.Children.Add(headVer);
                 stack.Children.Add(head);
@@ -2781,6 +2948,29 @@ namespace DeepSeekHarness
             Show();
             Activate();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            // 强制重新合成: 修复最小化/托盘恢复后部分区域(侧边栏/标题栏)不重绘的问题
+            // (Win11 22H2 等系统上 WPF 合成器缓存可能失效, 交互后才重绘)
+            try
+            {
+                UpdateLayout();
+                InvalidateVisual();
+                var ui = Content as UIElement;
+                if (ui != null)
+                {
+                    Dispatcher.BeginInvoke(new Action(delegate
+                    {
+                        try
+                        {
+                            // 微抖动 RenderTransform 强制合成器重绘整窗, 再还原
+                            ui.RenderTransform = new TranslateTransform(0, 0.01);
+                            ui.RenderTransform = null;
+                            UpdateLayout();
+                        }
+                        catch { }
+                    }), System.Windows.Threading.DispatcherPriority.Background);
+                }
+            }
+            catch { }
         }
 
         void StartReopenWatch()
