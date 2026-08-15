@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 · 逻辑层
 //  从 WinForms 版移植: 命令助手 / 配置 / 环境检测 / 代理 / 服务 / 插件 / 商城 / 更新
 //  全部 UI 无关; 通过 OnStatus / OnLog 回调向界面汇报
@@ -56,7 +56,7 @@ namespace DeepSeekHarness
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
             { "GitHub 项目主页", "GitHub Project" },
-            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.5.0 (WPF)", "Port {0} · Launcher v1.5.0 (WPF)" },
+            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.0 (WPF)", "Port {0} · Launcher v1.0.0 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
