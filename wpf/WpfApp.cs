@@ -637,27 +637,35 @@ namespace DeepSeekHarness
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
 
             var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
-            // 官方 DeepSeek 纯净透明跃起小鲸鱼 Logo (无多余生硬底框，极简科技微光)
-            ImageSource whaleImg = LoadEmbeddedPng(Palette.IsDark ? "DeepSeekHarness.whale-white.png" : "DeepSeekHarness.whale-blue.png");
-            if (whaleImg == null) whaleImg = LoadEmbeddedPng("DeepSeekHarness.logo.png");
-
-            if (whaleImg != null)
+            // 官方 DeepSeek 图标样式: 品牌蓝渐变圆角底块 + 透明底白色鲸鱼 (深浅主题下均清晰醒目)
+            ImageSource whaleWhite = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
+            if (whaleWhite != null)
             {
-                var img = new System.Windows.Controls.Image
+                var logoBox = new Border
                 {
-                    Source = whaleImg,
-                    Width = 26,
-                    Height = 26,
+                    Width = 34,
+                    Height = 34,
+                    CornerRadius = new CornerRadius(9),
+                    Background = Palette.BlueGradient(),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Effect = Palette.GlowEffect(Palette.Blue, Palette.IsDark ? 0.5 : 0.3),
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                logoBox.Child = new System.Windows.Controls.Image
+                {
+                    Source = whaleWhite,
+                    Width = 22,
+                    Height = 22,
                     Stretch = Stretch.Uniform,
+                    HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                if (Palette.IsDark) img.Effect = Palette.GlowEffect(Palette.Cyan, 0.5);
-                brand.Children.Add(img);
+                brand.Children.Add(logoBox);
             }
             else
             {
-                var dot = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(6), Background = Palette.BlueGradient(), VerticalAlignment = VerticalAlignment.Center };
-                dot.Child = new TextBlock { Text = "🐋", FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                var dot = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(8), Background = Palette.BlueGradient(), VerticalAlignment = VerticalAlignment.Center };
+                dot.Child = new TextBlock { Text = "🐋", FontSize = 15, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
                 brand.Children.Add(dot);
             }
 
@@ -2353,7 +2361,7 @@ namespace DeepSeekHarness
         {
             public ModernTrayPopup(MainWindow main, Dsh dsh)
             {
-                Width = 220;
+                Width = 200;
                 SizeToContent = SizeToContent.Height;
                 WindowStyle = WindowStyle.None;
                 AllowsTransparency = true;
@@ -2367,16 +2375,16 @@ namespace DeepSeekHarness
                     Background = Palette.CardGradient(),
                     BorderBrush = Palette.CardBorderBrush(),
                     BorderThickness = new Thickness(1),
-                    Padding = new Thickness(6, 8, 6, 8),
+                    Padding = new Thickness(6, 6, 6, 6),
                     Effect = Palette.CardShadow()
                 };
 
                 var stack = new StackPanel();
 
                 // 头部小标题
-                var head = new Grid { Margin = new Thickness(10, 4, 10, 6) };
-                var headTitle = new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.Bold };
-                var headVer = new TextBlock { Text = "v1.5.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
+                var head = new Grid { Margin = new Thickness(10, 3, 10, 4) };
+                var headTitle = new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 11, FontWeight = FontWeights.Bold };
+                var headVer = new TextBlock { Text = "v1.5.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
                 head.Children.Add(headTitle);
                 head.Children.Add(headVer);
                 stack.Children.Add(head);
@@ -2422,7 +2430,7 @@ namespace DeepSeekHarness
                 var b = new Border
                 {
                     CornerRadius = new CornerRadius(7),
-                    Padding = new Thickness(10, 7, 10, 7),
+                    Padding = new Thickness(10, 5, 10, 5),
                     Margin = new Thickness(2, 1, 2, 1),
                     Background = Brushes.Transparent,
                     Cursor = Cursors.Hand
@@ -2431,7 +2439,7 @@ namespace DeepSeekHarness
                 {
                     Text = label,
                     Foreground = Palette.Brush(danger ? Palette.Error : Palette.Text),
-                    FontSize = 13,
+                    FontSize = 12,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 b.Child = t;
@@ -2460,19 +2468,46 @@ namespace DeepSeekHarness
                 {
                     Height = 1,
                     Background = Palette.Brush(Palette.BorderSoft),
-                    Margin = new Thickness(8, 4, 8, 4)
+                    Margin = new Thickness(8, 3, 8, 3)
                 };
             }
 
             public void ShowAtCursor()
             {
-                var pt = System.Windows.Forms.Cursor.Position;
-                // 计算 DPI 缩放下的精确位置
-                Left = pt.X - Width + 10;
-                Top = pt.Y - Height - 10;
-                if (Top < 10) Top = pt.Y + 10;
-                if (Left < 10) Left = 10;
+                // 先显示完成布局, 再按真实尺寸定位 (避免 SizeToContent 未布局时 Height=0)
                 Show();
+                UpdateLayout();
+
+                // Cursor.Position 是物理像素, WPF Left/Top 是 DIP — 需要 DPI 换算
+                var pt = System.Windows.Forms.Cursor.Position;
+                double scale = 1.0;
+                var src = PresentationSource.FromVisual(this);
+                if (src != null && src.CompositionTarget != null)
+                    scale = src.CompositionTarget.TransformToDevice.M11;
+                if (scale < 0.1) scale = 1.0;
+
+                double wx = pt.X / scale;
+                double wy = pt.Y / scale;
+                double winW = ActualWidth;
+                double winH = ActualHeight;
+                if (winW <= 0) winW = 200;
+                if (winH <= 0) winH = 300;
+
+                double workH = SystemParameters.WorkArea.Height;
+                double workW = SystemParameters.WorkArea.Width;
+
+                // 优先弹出在鼠标上方 (托盘在屏幕底部, 菜单贴其上), 上方空间不足则翻转到下方
+                double top = wy - winH - 6;
+                if (top < 8) top = wy + 12;
+                if (top + winH > workH - 4) top = workH - winH - 4;
+                if (top < 8) top = 8;
+
+                double left = wx - winW + 16;
+                if (left < 8) left = 8;
+                if (left + winW > workW - 8) left = workW - winW - 8;
+
+                Left = left;
+                Top = top;
                 Activate();
             }
         }
