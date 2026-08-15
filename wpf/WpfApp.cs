@@ -1806,7 +1806,7 @@ namespace DeepSeekHarness
         {
             if (upDshCur == null) return;
             var u = dsh.Update;
-            upDshCur.Text = "🐋 " + Lang.T("当前") + " " + (string.IsNullOrEmpty(u.DshCurrent) ? "-" : u.DshCurrent);
+            upDshCur.Text = Lang.T("当前") + " " + (string.IsNullOrEmpty(u.DshCurrent) ? "-" : u.DshCurrent);
             upDshLatest.Text = "最新 " + (string.IsNullOrEmpty(u.DshLatest) ? "-" : u.DshLatest);
             upDshNote.Text = u.DshUpdate ? "发现新版本！" : "已是最新版本";
             upDshNote.Foreground = Palette.Brush(u.DshUpdate ? Palette.Warn : Palette.TextFaint);
