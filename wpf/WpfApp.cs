@@ -637,23 +637,29 @@ namespace DeepSeekHarness
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
 
             var brand = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
-            // 官方 DeepSeek 图标样式: 品牌蓝渐变圆角底块 + 透明底白色鲸鱼 (深浅主题下均清晰醒目)
-            ImageSource whaleWhite = LoadEmbeddedPng("DeepSeekHarness.whale-white.png");
-            if (whaleWhite != null)
+            // 官方 DeepSeek 图标样式: 按主题搭配不同 logo
+            //   深色模式: 品牌蓝渐变底块 + 白色鲸鱼 (白鲸在蓝底/深底上醒目)
+            //   浅色模式: 纯白底块 + 蓝色鲸鱼 (蓝鲸在白底上醒目, 更符合浅色清爽感)
+            ImageSource whaleImg = LoadEmbeddedPng(Palette.IsDark ? "DeepSeekHarness.whale-white.png" : "DeepSeekHarness.whale-blue.png");
+            if (whaleImg == null) whaleImg = LoadEmbeddedPng(Palette.IsDark ? "DeepSeekHarness.whale-white.png" : "DeepSeekHarness.logo.png");
+
+            if (whaleImg != null)
             {
                 var logoBox = new Border
                 {
                     Width = 34,
                     Height = 34,
                     CornerRadius = new CornerRadius(9),
-                    Background = Palette.BlueGradient(),
+                    Background = Palette.IsDark ? (Brush)Palette.BlueGradient() : (Brush)Palette.Brush(Color.FromRgb(255, 255, 255)),
+                    BorderBrush = Palette.IsDark ? null : Palette.Brush(Palette.BorderSoft),
+                    BorderThickness = Palette.IsDark ? new Thickness(0) : new Thickness(1),
                     VerticalAlignment = VerticalAlignment.Center,
-                    Effect = Palette.GlowEffect(Palette.Blue, Palette.IsDark ? 0.5 : 0.3),
+                    Effect = Palette.IsDark ? Palette.GlowEffect(Palette.Blue, 0.5) : Palette.CardShadow(),
                     Margin = new Thickness(0, 0, 4, 0)
                 };
                 logoBox.Child = new System.Windows.Controls.Image
                 {
-                    Source = whaleWhite,
+                    Source = whaleImg,
                     Width = 22,
                     Height = 22,
                     Stretch = Stretch.Uniform,
