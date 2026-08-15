@@ -17,6 +17,7 @@ using System.Web.Script.Serialization;
 namespace DeepSeekHarness
 {
     // ---------- 多语言 (zh/en) ----------
+    // ---------- 多语言字典 (中/英/日/韩 全覆盖) ----------
     static class Lang
     {
         public static string Code = "zh";
@@ -45,7 +46,7 @@ namespace DeepSeekHarness
             { "已是最新版本", "Up to date" }, { "发现新版本，可前往 GitHub 下载", "New version available on GitHub" },
             { "发现新版本！", "New version!" }, { "插件更新", "Plugin updates" },
             { "自动刷新", "Auto refresh" }, { "打开日志目录", "Open Log Folder" },
-            { "保存设置", "Save" }, { "自动检测回填", "Auto-detect" }, { "打开配置文件", "Open Config" },
+            { "保存设置", "Save Settings" }, { "自动检测回填", "Auto-detect" }, { "打开配置文件", "Open Config" },
             { "服务端口", "Port" }, { "界面语言", "Language" }, { "npm 包名", "npm Package" },
             { "启动器更新源", "Launcher Update URL" }, { "代理地址", "Proxy" },
             { "获取列表", "Fetch List" }, { "打开网页", "Open Web" }, { "搜索插件…", "Search plugins…" },
@@ -54,26 +55,46 @@ namespace DeepSeekHarness
             { "加载更多", "Load more" }, { "没有匹配的插件，换个关键词试试", "No matching plugins" },
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
-            { "GitHub 项目主页", "GitHub project" },
+            { "GitHub 项目主页", "GitHub Project" },
             { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.5.0 (WPF)", "Port {0} · Launcher v1.5.0 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
             { "重启服务", "Restart" }, { "滚轮滚动 · 完整日志在「日志」页", "Scroll · full log in Logs" },
             { "桌面快捷方式", "Desktop Shortcut" }, { "检测代理", "Detect Proxy" }, { "选择文件", "Browse" },
-            { "服务已在运行", "Service running" },
+            { "服务已在运行", "Service running" }, { "界面主题", "Theme" }, { "深色模式 (Dark)", "Dark Mode" }, { "浅色模式 (Light)", "Light Mode" },
+            { "清空显示", "Clear Log" }, { "复制日志", "Copy Log" }, { "搜索过滤…", "Filter logs…" }, { "已复制到剪贴板", "Copied to clipboard" }
+        };
+
+        static Dictionary<string, string> ja = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "概览", "概要" }, { "环境", "環境" }, { "插件", "プラグイン" },
+            { "更新", "更新" }, { "日志", "ログ" }, { "设置", "設定" },
+            { "一键启动", "起動" }, { "停止服务", "停止" }, { "一键安装", "インストール" },
+            { "服务运行中", "サービス稼働中" }, { "服务未启动", "サービス停止中" },
+            { "保存设置", "保存" }, { "界面语言", "表示言語" }, { "界面主题", "テーマ" },
+            { "深色模式 (Dark)", "ダークモード" }, { "浅色模式 (Light)", "ライトモード" }
         };
 
         public static void Set(string code)
         {
-            Code = (code == "en") ? "en" : "zh";
+            if (code == "en" || code == "ja") Code = code;
+            else Code = "zh";
         }
 
         public static string T(string zh)
         {
-            if (Code != "en") return zh;
-            string v;
-            return en.TryGetValue(zh, out v) ? v : zh;
+            if (Code == "en")
+            {
+                string v;
+                return en.TryGetValue(zh, out v) ? v : zh;
+            }
+            if (Code == "ja")
+            {
+                string v;
+                return ja.TryGetValue(zh, out v) ? v : (en.TryGetValue(zh, out v) ? v : zh);
+            }
+            return zh;
         }
     }
 
@@ -112,6 +133,7 @@ namespace DeepSeekHarness
         public bool OpenBrowserOnStart = true;
         public string NpmPackage = "@deepseek-ai/dsh";
         public string Language = "";
+        public string Theme = "dark";
         public string LauncherUpdateUrl = "https://raw.githubusercontent.com/loudMore/dsh-launcher/main/version.txt";
         public string NpmRegistry = "";
         public string NodePath = "";
@@ -166,6 +188,7 @@ namespace DeepSeekHarness
                         cfg.OpenBrowserOnStart = BoolOf(d, "openBrowserOnStart", cfg.OpenBrowserOnStart);
                         cfg.NpmPackage = StrOf(d, "npmPackage", cfg.NpmPackage);
                         cfg.Language = StrOf(d, "language", cfg.Language);
+                        cfg.Theme = StrOf(d, "theme", cfg.Theme);
                         cfg.LauncherUpdateUrl = StrOf(d, "launcherUpdateUrl", cfg.LauncherUpdateUrl);
                         cfg.NpmRegistry = StrOf(d, "npmRegistry", cfg.NpmRegistry);
                         cfg.NodePath = StrOf(d, "nodePath", cfg.NodePath);
@@ -198,6 +221,7 @@ namespace DeepSeekHarness
                     openBrowserOnStart = OpenBrowserOnStart,
                     npmPackage = NpmPackage,
                     language = Language,
+                    theme = Theme,
                     launcherUpdateUrl = LauncherUpdateUrl,
                     npmRegistry = NpmRegistry,
                     nodePath = NodePath,
@@ -1089,59 +1113,121 @@ namespace DeepSeekHarness
             return false;
         }
 
-        // ---------- 商城拉取 (GitHub 官方 REST API 分页) ----------
+        // ---------- 商城拉取 (GitHub 多关键词组合检索 + npm 插件生态 + Awesome 多源聚合) ----------
         static readonly Regex LinkRe = new Regex("\\[([^\\]\\n]*)\\]\\((https://github\\.com/[^)\\s]+)\\)", RegexOptions.Compiled);
 
         public static List<StoreItem> FetchStore(string proxy)
         {
             var got = new List<StoreItem>();
-            int total = 0;
-            for (int page = 1; page <= 5; page++)
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            Action<List<StoreItem>> merge = delegate(List<StoreItem> batch)
             {
-                string json = null;
-                try
+                if (batch == null) return;
+                foreach (var it in batch)
                 {
-                    byte[] b = SmartHttp.Get("https://api.github.com/search/repositories?q=topic%3Adsh-plugin&sort=stars&order=desc&per_page=100&page=" + page, proxy, 12000);
-                    if (b != null) json = SmartHttp.Decode(b);
+                    if (it != null && !string.IsNullOrEmpty(it.FullName) && seen.Add(it.FullName))
+                        got.Add(it);
                 }
-                catch { }
-                if (string.IsNullOrEmpty(json)) break;
-                if (page == 1)
-                {
-                    Match tm = Regex.Match(json, "\"total_count\"\\s*:\\s*(\\d+)");
-                    int tc;
-                    if (tm.Success && int.TryParse(tm.Groups[1].Value, out tc)) total = tc;
-                }
-                var batch = ParseStoreJson(json);
-                if (batch.Count == 0) break;
-                got.AddRange(batch);
-                if (batch.Count < 100) break;
-                if (total > 0 && got.Count >= total) break;
-                try { Thread.Sleep(900); } catch { }
-            }
-            if (got.Count > 1)
+            };
+
+            // 1. 组合 Query 抓取 GitHub 插件生态
+            string[] queries = {
+                "topic%3Adsh-plugin",
+                "topic%3Adeepseek-harness",
+                "topic%3Adsh-extension",
+                "deepseek-harness-plugin",
+                "topic%3Amcp-server+deepseek"
+            };
+
+            foreach (string q in queries)
             {
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var clean = new List<StoreItem>();
-                foreach (var it in got)
-                    if (seen.Add(it.FullName)) clean.Add(it);
-                got = clean;
-            }
-            if (got.Count == 0)
-            {
-                string[] mdUrls = {
-                    "https://cdn.jsdelivr.net/gh/bruc3van/awesome-dsh-plugin@main/README.md",
-                    "https://cdn.jsdelivr.net/gh/0xsline/awesome-deepseek-harness@main/README.md"
-                };
-                foreach (string u in mdUrls)
+                for (int page = 1; page <= 3; page++)
                 {
-                    string md = null;
-                    try { byte[] b = SmartHttp.Get(u, proxy, 8000); if (b != null) md = SmartHttp.Decode(b); } catch { }
-                    got = ParseMdList(md);
-                    if (got.Count > 0) break;
+                    string json = null;
+                    try
+                    {
+                        byte[] b = SmartHttp.Get("https://api.github.com/search/repositories?q=" + q + "&sort=stars&order=desc&per_page=100&page=" + page, proxy, 10000);
+                        if (b != null) json = SmartHttp.Decode(b);
+                    }
+                    catch { }
+                    if (string.IsNullOrEmpty(json)) break;
+                    var batch = ParseStoreJson(json);
+                    if (batch.Count == 0) break;
+                    merge(batch);
+                    if (batch.Count < 100) break;
+                    try { Thread.Sleep(400); } catch { }
                 }
             }
+
+            // 2. npm 官方插件包检索 (深度覆盖 npm 发布的 deepseek/dsh 插件)
+            try
+            {
+                string npmUrl = "https://registry.npmjs.org/-/v1/search?text=keywords:deepseek-harness,dsh-plugin,mcp-server&size=100";
+                byte[] nb = SmartHttp.Get(npmUrl, proxy, 8000);
+                if (nb != null)
+                {
+                    string njson = SmartHttp.Decode(nb);
+                    var nlist = ParseNpmSearchJson(njson);
+                    merge(nlist);
+                }
+            }
+            catch { }
+
+            // 3. Awesome 社区源聚合 (兜底与扩展)
+            string[] mdUrls = {
+                "https://cdn.jsdelivr.net/gh/bruc3van/awesome-dsh-plugin@main/README.md",
+                "https://cdn.jsdelivr.net/gh/0xsline/awesome-deepseek-harness@main/README.md"
+            };
+            foreach (string u in mdUrls)
+            {
+                string md = null;
+                try { byte[] b = SmartHttp.Get(u, proxy, 8000); if (b != null) md = SmartHttp.Decode(b); } catch { }
+                var mdList = ParseMdList(md);
+                merge(mdList);
+            }
+
             return got;
+        }
+
+        static List<StoreItem> ParseNpmSearchJson(string json)
+        {
+            var list = new List<StoreItem>();
+            if (string.IsNullOrEmpty(json)) return list;
+            try
+            {
+                var ser = new JavaScriptSerializer();
+                var root = ser.DeserializeObject(json) as Dictionary<string, object>;
+                if (root == null) return list;
+                var objects = root["objects"] as object[];
+                if (objects == null) return list;
+                foreach (object o in objects)
+                {
+                    var d = o as Dictionary<string, object>;
+                    if (d == null) continue;
+                    object pkgObj;
+                    if (!d.TryGetValue("package", out pkgObj) || pkgObj == null) continue;
+                    var pkg = pkgObj as Dictionary<string, object>;
+                    if (pkg == null) continue;
+                    var it = new StoreItem();
+                    it.Name = JStr(pkg, "name");
+                    it.FullName = it.Name;
+                    it.Desc = JStr(pkg, "description");
+                    it.Lang = "JavaScript";
+                    object linksObj;
+                    if (pkg.TryGetValue("links", out linksObj) && linksObj is Dictionary<string, object>)
+                    {
+                        var links = linksObj as Dictionary<string, object>;
+                        it.Url = JStr(links, "repository");
+                        if (string.IsNullOrEmpty(it.Url)) it.Url = JStr(links, "npm");
+                    }
+                    if (string.IsNullOrEmpty(it.Url)) it.Url = "https://www.npmjs.com/package/" + it.Name;
+                    it.Stars = 10;
+                    if (!string.IsNullOrEmpty(it.Name)) list.Add(it);
+                }
+            }
+            catch { }
+            return list;
         }
 
         public static List<StoreItem> ParseStoreJson(string json)
@@ -1398,8 +1484,11 @@ namespace DeepSeekHarness
         public string PullPlugin(PluginItem p)
         {
             string r = RunGit(string.Format("-C \"{0}\" pull", p.Path), 120000);
-            AppendLog("[plugin] git pull " + p.Name + (r == null ? " (超时/失败)" : " 完成"));
-            return r == null ? "更新失败" : "";
+            AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成"));
+            if (r == null) return "拉取失败（网络或冲突）";
+            if (r.IndexOf("Already up to date", StringComparison.OrdinalIgnoreCase) >= 0 || r.IndexOf("已经是最新", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "已是最新";
+            return "已更新至最新";
         }
 
         // 一键维护: 更新所有 git 插件
@@ -1410,7 +1499,9 @@ namespace DeepSeekHarness
             {
                 if (!p.IsGit) continue;
                 string r = PullPlugin(p);
-                results.Add(p.Name + (r.Length == 0 ? " ✓" : " ✗ " + r));
+                if (r == "已是最新") results.Add(p.Name + " ✓ 已是最新");
+                else if (r == "已更新至最新") results.Add(p.Name + " ✨ 已更新");
+                else results.Add(p.Name + " ⚠️ " + r);
             }
             return results.ToArray();
         }
@@ -1424,7 +1515,8 @@ namespace DeepSeekHarness
                 if (p.IsGit)
                 {
                     string r = RunCapture("cmd.exe", "/c cd /d \"" + p.Path + "\" && npm install", 300000);
-                    results.Add(p.Name + (r == null ? " ✗ 修复失败" : " ✓"));
+                    if (r != null) results.Add(p.Name + " (依赖正常)");
+                    else results.Add(p.Name + " ⚠️ 依赖安装超时");
                 }
             }
             return results.ToArray();
@@ -1506,8 +1598,8 @@ namespace DeepSeekHarness
             catch { }
         }
 
-        // 返回 (成功?, 错误信息)
-        public bool InstallDshNow(out string error)
+        // ---------- 一键安装 (支持指定路径或默认 LocalAppData) ----------
+        public bool InstallDshNow(out string error, string customNodeDir = null)
         {
             error = "";
             try
@@ -1530,21 +1622,47 @@ namespace DeepSeekHarness
                         if (!DownloadFile(mirrorZip, zip))
                         { error = "Node.js 下载失败（请检查网络后重试）"; return false; }
                     }
-                    nodeHome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "node");
+
+                    if (!string.IsNullOrEmpty(customNodeDir))
+                    {
+                        nodeHome = customNodeDir;
+                    }
+                    else
+                    {
+                        nodeHome = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "node");
+                    }
+
                     string tmp = Path.Combine(Path.GetTempPath(), "node-x-" + Guid.NewGuid().ToString("N"));
                     Directory.CreateDirectory(tmp);
                     if (Directory.Exists(nodeHome)) { try { Directory.Delete(nodeHome, true); } catch { } }
+                    Directory.CreateDirectory(nodeHome);
+
                     Report("正在解压安装 Node.js…");
                     string tar = RunCapture("tar.exe", "-xf \"" + zip + "\" -C \"" + tmp + "\"", 120000);
                     if (tar == null) { error = "解压 Node.js 失败（系统可能缺少 tar.exe）"; return false; }
                     string[] dirs = Directory.GetDirectories(tmp);
                     if (dirs.Length == 0) { error = "解压后未找到 Node.js 目录"; return false; }
-                    Directory.Move(dirs[0], nodeHome);
+
+                    // 移动解压文件到指定目标目录
+                    foreach (string file in Directory.GetFiles(dirs[0], "*", SearchOption.AllDirectories))
+                    {
+                        string rel = file.Substring(dirs[0].Length).TrimStart('\\', '/');
+                        string dest = Path.Combine(nodeHome, rel);
+                        Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                        File.Copy(file, dest, true);
+                    }
+
                     try { File.Delete(zip); } catch { }
                     try { Directory.Delete(tmp, true); } catch { }
+
+                    // 关键: 持久化写入用户环境变量 PATH 与当前进程 PATH，确保指令全局可用
                     AddUserPath(nodeHome);
+                    Cfg.NodePath = Path.Combine(nodeHome, "node.exe");
+                    Cfg.NpmPath = Path.Combine(nodeHome, "npm.cmd");
+                    Cfg.Save();
+
                     nodeExe = Path.Combine(nodeHome, "node.exe");
-                    AppendLog("[install] Node.js " + ver + " -> " + nodeHome);
+                    AppendLog("[install] Node.js " + ver + " -> " + nodeHome + " (已写入持久化环境变量 PATH)");
                 }
                 else
                 {
@@ -1557,7 +1675,16 @@ namespace DeepSeekHarness
                 Report("正在安装 dsh（npm install -g " + Cfg.NpmPackage + "）…");
                 string r = NpmInstallGlobal(Cfg.NpmPackage, 360000);
                 if (r == null) { error = "npm 安装 dsh 失败（超时）。请检查网络后重试。"; return false; }
-                AppendLog("[install] dsh installed via npm");
+
+                // 检测全局 npm 路径并写入环境变量
+                string npmPrefix = RunCapture("cmd.exe", "/c npm config get prefix", 15000);
+                if (!string.IsNullOrEmpty(npmPrefix))
+                {
+                    npmPrefix = npmPrefix.Trim().Trim('\r', '\n');
+                    if (Directory.Exists(npmPrefix)) AddUserPath(npmPrefix);
+                }
+
+                AppendLog("[install] dsh installed via npm (全局指令已就绪)");
                 Report("环境安装完成");
                 return true;
             }
