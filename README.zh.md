@@ -2,7 +2,7 @@
 
 > DeepSeek Harness (dsh) 傻瓜式启动器：**双击即用、一键安装、一键更新、一键维护**——Node.js、dsh、插件全包办，带国内镜像兜底。
 
-[English](README.md) | [中文](README.zh.md)
+[English](README.md) | [中文](README.zh.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md)
 
 [![dsh-launcher](https://img.shields.io/badge/dsh--launcher-%E2%9C%93-4D6BFE?style=flat-square)](https://github.com/topics/dsh-launcher)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-blue?style=flat-square&logo=windows)](../../releases)
@@ -19,9 +19,11 @@
 |---|---|
 | ![更新](./docs/images/updates.png) | ![设置](./docs/images/settings.png) |
 
-| 插件商城 |
-|---|
-| ![插件商城](./docs/images/store.png) |
+| 插件商城 | 日志 |
+|---|---|
+| ![插件商城](./docs/images/store.png) | ![日志](./docs/images/logs.png) |
+
+**其他语言界面：** [English](./docs/images/overview-en.png) · [日本語](./docs/images/overview-ja.png) · [한국어](./docs/images/overview-ko.png) · [Русский](./docs/images/overview-ru.png)
 
 ## 为什么需要它
 
@@ -48,7 +50,7 @@
 - 🧩 **插件管理** — 支持 **git 地址** 或 **npm 包名** 安装；单插件智能更新（仅当远程确有新提交才拉取——已最新绝不误报失败）、卸载、启用/禁用、一键维护（全部更新 + 修复依赖）
 - 🛍️ **插件商城** — 独立商城窗口，聚合 **GitHub 多关键词 + npm 官方包源 + Awesome 列表**：每卡片显示星标/语言/最近更新，模糊搜索、按星标或名称排序、语言筛选、已安装插件自动标记 ✓（不可再点）、一键安装
 - 🌉 **自动代理** — 自动探测 Clash / v2rayN 等（配置 → 环境变量 → 系统代理 → 常见端口扫描），npm / git / 更新全走代理；npm 与 Node.js 带国内镜像兜底
-- 🌐 **多语言界面** — 默认跟随系统，支持中/英/日手动切换（带国旗图标）
+- 🌐 **多语言界面** — 默认跟随系统，支持**中 / 英 / 日 / 韩 / 俄 / 法 / 德 / 西**八种语言手动切换（带国旗图标）
 - 🖱️ **现代系统托盘** — WPF 悬浮圆角卡片菜单（打开启动器/启动/停止/重启/浏览器/商城/主题切换/退出），关闭最小化到托盘、单实例
 - 🧩 **现代化弹窗** — 全部提示/确认替换为深浅主题自适应的圆角微光对话框
 - 📄 **日志查看器** — 终端式日志页：源切换（launcher.log / dsh.log）、实时过滤、复制、清空
