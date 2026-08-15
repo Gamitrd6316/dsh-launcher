@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 (代码式 WPF, 无 XAML 编译链)
 //  v0.1 骨架: 深色主题 + WindowChrome 无边框窗(原生缩放/吸附) + 侧栏导航 + 切页淡入动画
 //  编译: build.bat (仅用系统自带 csc + GAC WPF 程序集)
@@ -257,7 +257,7 @@ namespace DeepSeekHarness
             stack.Children.Add(logoEl);
             stack.Children.Add(new TextBlock { Text = "DeepSeek Harness Launcher", Foreground = Palette.Brush(Palette.Text), FontSize = 19, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) });
             stack.Children.Add(new TextBlock { Text = Lang.T("DSH 启动器 · WPF 旗舰版"), Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
-            stack.Children.Add(new TextBlock { Text = "v1.0.0 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
+            stack.Children.Add(new TextBlock { Text = "v1.0.1 · by loudMore", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
             // 加载动画条
             var bar = new Border { Height = 4, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.BgInput), Margin = new Thickness(30, 16, 30, 0) };
             var fill = new Border { Width = 60, CornerRadius = new CornerRadius(2), Background = Palette.Brush(Palette.Blue), HorizontalAlignment = HorizontalAlignment.Left };
@@ -418,7 +418,7 @@ namespace DeepSeekHarness
         bool IsLauncherNewer()
         {
             Version cur, latest;
-            if (!Version.TryParse("1.0.0", out cur)) return false;
+            if (!Version.TryParse("1.0.1", out cur)) return false;
             if (!Version.TryParse(lupLatestStr, out latest)) return false;
             return latest > cur;
         }
@@ -680,7 +680,7 @@ namespace DeepSeekHarness
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            badge.Child = new TextBlock { Text = "v1.0.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
+            badge.Child = new TextBlock { Text = "v1.0.1", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 10, FontWeight = FontWeights.Bold };
             brand.Children.Add(title);
             brand.Children.Add(badge);
 
@@ -826,7 +826,7 @@ namespace DeepSeekHarness
 
             sbRight = new TextBlock
             {
-                Text = "端口 8099 · 启动器 v1.0.0 (WPF)",
+                Text = "端口 8099 · 启动器 v1.0.1 (WPF)",
                 Foreground = Palette.Brush(Palette.TextFaint),
                 FontSize = 12,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -1098,12 +1098,34 @@ namespace DeepSeekHarness
                         }));
                     }
                 }
+                // 启动服务前: 坏插件自动隔离 (修不好就先禁用, 保证服务能跑, 并提示玩家去 dsh 修复)
+                List<string> quarantined = null;
+                try { quarantined = dsh.QuarantineBrokenPlugins(); } catch { }
+
                 // 启动时自动启动服务 (与旧版一致, 按配置) — 用端口轮询让 UI 与真实状态保持一致
                 // 注意: DispatcherTimer 必须在 UI 线程创建, 所以先 StartServiceAsync 再通过 Dispatcher 回到 UI 线程轮询
                 if (dsh.Cfg.AutoStartService && !Dsh.IsPortOpen(dsh.Cfg.Port))
                 {
                     try { dsh.StartServiceAsync(); } catch { }
                     Dispatcher.BeginInvoke(new Action(delegate { PollServiceState(true); }));
+                }
+
+                // 有被隔离的坏插件 → 提示玩家并附 dsh 修复提示词
+                if (quarantined != null && quarantined.Count > 0)
+                {
+                    var hint = new StringBuilder();
+                    hint.AppendLine(Lang.T("以下插件因缺少依赖被暂时禁用，服务已正常启动："));
+                    hint.AppendLine();
+                    foreach (string q in quarantined) hint.AppendLine("  ⚠️ " + q);
+                    hint.AppendLine();
+                    hint.AppendLine(Lang.T("修复后重启服务即可恢复。可在「插件」页一键修复依赖，或在 dsh 终端执行:"));
+                    hint.AppendLine("  npm install -g <缺失依赖>");
+                    hint.AppendLine("  cd <插件目录> && npm install");
+                    Dispatcher.BeginInvoke(new Action(delegate
+                    {
+                        ShowModernWarn(this, Lang.T("插件已被隔离"), hint.ToString());
+                        pageDirty[2] = true;   // 插件页下次进入刷新
+                    }));
                 }
             });
             t.IsBackground = true;
@@ -1193,7 +1215,7 @@ namespace DeepSeekHarness
                 sbDot.Effect = running ? Palette.GlowEffect(Palette.Success, 0.7) : null;
                 sbText.Text = running ? Lang.T("服务已在运行") : Lang.T("服务未启动");
             }
-            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.0 (WPF)"), dsh.Cfg.Port);
+            sbRight.Text = string.Format(Lang.T("端口 {0} · 启动器 v1.0.1 (WPF)"), dsh.Cfg.Port);
             }
             catch { }
         }
@@ -1537,6 +1559,25 @@ namespace DeepSeekHarness
                     Foreground = Palette.Brush(p.Disabled ? Palette.Warn : (p.IsGit ? Palette.Success : Palette.TextDim)),
                     FontSize = 11
                 });
+                // 依赖状态徽章: 缺依赖的插件是高危信号 (缺依赖会让整个服务插件树崩溃)
+                if (!p.Disabled && p.DepsChecked)
+                {
+                    if (p.DepsOk)
+                    {
+                        nameCol.Children.Add(new TextBlock { Text = "✓ " + Lang.T("依赖完整"), Foreground = Palette.Brush(Palette.Success), FontSize = 11 });
+                    }
+                    else
+                    {
+                        nameCol.Children.Add(new TextBlock
+                        {
+                            Text = "⚠️ " + Lang.T("缺依赖") + ": " + p.MissingDeps,
+                            Foreground = Palette.Brush(Palette.Warn),
+                            FontSize = 11,
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                            ToolTip = "缺少: " + p.MissingDeps + "\n点击「修复依赖」自动补齐"
+                        });
+                    }
+                }
                 if (p.IsGit)
                 {
                     string h;
@@ -1578,6 +1619,24 @@ namespace DeepSeekHarness
                     btns.Children.Add(upBtn);
                 }
                 btns.Children.Add(Btn(Lang.T("目录"), delegate { try { Process.Start("explorer.exe", "\"" + pp.Path + "\""); } catch { } }, false));
+                // 缺依赖的插件显示"修复依赖"按钮 (高危: 缺依赖会让整个服务插件树崩溃)
+                if (!pp.Disabled && pp.DepsChecked && !pp.DepsOk)
+                {
+                    btns.Children.Add(Btn("🔧 " + Lang.T("修复依赖"), delegate
+                    {
+                        var t = new Thread(delegate()
+                        {
+                            string res = dsh.FixPluginDeps(pp);
+                            Dispatcher.BeginInvoke(new Action(delegate
+                            {
+                                RenderPlugins();
+                                ShowModernInfo(this, Lang.T("修复依赖"), pp.Name + ": " + res);
+                            }));
+                        });
+                        t.IsBackground = true;
+                        t.Start();
+                    }, true));
+                }
                 btns.Children.Add(Btn(Lang.T("卸载"), delegate { ConfirmUninstall(pp); }, false));
                 btns.Children.Add(Btn(p.Disabled ? Lang.T("启用") : Lang.T("禁用"), delegate { Op(pp, dsh.TogglePlugin); }, false));
                 Grid.SetColumn(btns, 2);
@@ -1720,7 +1779,7 @@ namespace DeepSeekHarness
             lupTitleRow.Children.Add(new TextBlock { Text = "🚀 ", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
             lupTitleRow.Children.Add(new TextBlock { Text = Lang.T("启动器") + " (Launcher)", Foreground = Palette.Brush(Palette.Text), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             lupCol.Children.Add(lupTitleRow);
-            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.0", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
+            upLupCur = new TextBlock { Text = Lang.T("当前") + " v1.0.1", Foreground = Palette.Brush(Palette.Text), FontSize = 14, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) };
             upLupLatest = new TextBlock { Text = Lang.T("未检查"), Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, Margin = new Thickness(0, 2, 0, 0) };
             upLupNote = new TextBlock { Text = "", Foreground = Palette.Brush(Palette.TextFaint), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
             lupCol.Children.Add(upLupCur);
@@ -2460,7 +2519,7 @@ namespace DeepSeekHarness
                 // 头部小标题
                 var head = new Grid { Margin = new Thickness(10, 3, 10, 4) };
                 var headTitle = new TextBlock { Text = "DeepSeek Harness", Foreground = Palette.Brush(Palette.Text), FontSize = 11, FontWeight = FontWeights.Bold };
-                var headVer = new TextBlock { Text = "v1.0.0", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
+                var headVer = new TextBlock { Text = "v1.0.1", Foreground = Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Right, FontWeight = FontWeights.SemiBold };
                 head.Children.Add(headTitle);
                 head.Children.Add(headVer);
                 stack.Children.Add(head);
