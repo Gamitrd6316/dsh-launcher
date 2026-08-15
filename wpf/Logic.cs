@@ -56,7 +56,7 @@ namespace DeepSeekHarness
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
             { "GitHub 项目主页", "GitHub Project" },
-            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.3 (WPF)", "Port {0} · Launcher v1.0.3 (WPF)" },
+            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.4 (WPF)", "Port {0} · Launcher v1.0.4 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
@@ -2131,17 +2131,44 @@ namespace DeepSeekHarness
         }
 
         // 一键维护: 更新所有 git 插件 (仅真正有更新的执行 pull, 已最新明确显示, 绝不误报失败)
+        // 全部更新插件: 只处理确有更新的插件, 已最新的完全不出现 (避免弹窗列出无关插件)
         public string[] PullAllPlugins()
         {
             var results = new List<string>();
             foreach (var p in ScanPlugins())
             {
-                if (!p.IsGit) continue;
-                string r = PullPlugin(p);
-                if (r == "已是最新") results.Add(p.Name + " ✓ 已是最新");
-                else if (r == "已更新至最新") results.Add(p.Name + " ✨ 已更新");
-                else results.Add(p.Name + " ⚠️ " + r);
+                if (!p.IsGit || p.Disabled) continue;
+                // 快速判定: fetch 当前分支 → behind 数
+                string branch = FirstLine(RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", p.Path), 10000));
+                if (string.IsNullOrEmpty(branch)) continue;
+                string fetched = RunGit(string.Format("-C \"{0}\" fetch origin {1}", p.Path, branch), 60000);
+                string localHash = RunGit(string.Format("-C \"{0}\" rev-parse HEAD", p.Path), 10000);
+                if (fetched == null)
+                {
+                    // 当前分支 fetch 失败 (如本地 master / 远程 main): 对比远程默认分支 HEAD
+                    string remoteHead = RunGit(string.Format("-C \"{0}\" ls-remote origin HEAD", p.Path), 20000);
+                    string local = (localHash ?? "").Trim();
+                    if (remoteHead != null && local.Length > 0)
+                    {
+                        string[] parts = remoteHead.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        string rh = parts.Length > 0 ? parts[0] : "";
+                        if (rh.Length >= 7 && rh.Equals(local, StringComparison.OrdinalIgnoreCase))
+                            continue;   // 本地与远程默认分支一致 → 已最新, 不出现
+                    }
+                    results.Add(p.Name + " ⚠️ 无法连接远程"); continue;
+                }
+                string behind = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..FETCH_HEAD", p.Path), 10000);
+                int n;
+                behind = (behind ?? "").Trim();
+                if (behind.Length == 0 || !int.TryParse(behind, out n) || n <= 0)
+                    continue;   // 已最新 → 不出现, 不执行任何操作
+                // 确有更新 → 执行 pull
+                string r = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
+                AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成") + " ahead=" + n);
+                if (r == null) results.Add(p.Name + " ⚠️ 拉取失败（网络或冲突）");
+                else results.Add(p.Name + " ✨ 已更新");
             }
+            if (results.Count == 0) results.Add("全部插件已是最新 ✓");
             return results.ToArray();
         }
 
