@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  DeepSeek Harness 启动器 - WPF 重构版 · 逻辑层
 //  从 WinForms 版移植: 命令助手 / 配置 / 环境检测 / 代理 / 服务 / 插件 / 商城 / 更新
 //  全部 UI 无关; 通过 OnStatus / OnLog 回调向界面汇报
@@ -56,7 +56,7 @@ namespace DeepSeekHarness
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
             { "GitHub 项目主页", "GitHub Project" },
-            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.1 (WPF)", "Port {0} · Launcher v1.0.1 (WPF)" },
+            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.2 (WPF)", "Port {0} · Launcher v1.0.2 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
@@ -1948,53 +1948,33 @@ namespace DeepSeekHarness
             string branch = FirstLine(RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref HEAD", p.Path), 10000));
             if (string.IsNullOrEmpty(branch)) branch = "HEAD";
 
-            // 1. 有远程跟踪分支: 按上游判断
-            string upstream = RunGit(string.Format("-C \"{0}\" rev-parse --abbrev-ref --symbolic-full-name @{{u}}", p.Path), 10000);
-            if (upstream != null)
+            // 统一判定: 与 CheckUpdates 完全一致的策略 — fetch 当前分支 → 计算本地落后提交数
+            // 只有"本地确实落后"才执行 pull; 哈希不同但本地领先/分叉一律视为已最新, 绝不误报
+            string fetched = RunGit(string.Format("-C \"{0}\" fetch origin {1}", p.Path, branch), 60000);
+            if (fetched == null)
             {
-                string behind = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..@{{u}}", p.Path), 10000);
-                int n = 0;
-                behind = (behind ?? "").Trim();
-                if (behind.Length > 0 && int.TryParse(behind, out n) && n <= 0)
-                    return "已是最新";
-                if (behind.Length == 0)
-                {
-                    // 无法读取落后数 → 保守: 尝试快速拉取
-                    string r0 = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
-                    if (r0 == null) return "拉取失败（网络或冲突）";
-                    return "已更新至最新";
-                }
-                string r = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
-                AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成") + " ahead=" + n);
-                if (r == null) return "拉取失败（网络或冲突）";
-                return "已更新至最新";
-            }
-
-            // 2. 无上游跟踪分支 (如本地 master / 远程 main): 对比远程默认分支 HEAD
-            string remote = RunGit(string.Format("-C \"{0}\" ls-remote origin HEAD", p.Path), 20000);
-            string local = RunGit(string.Format("-C \"{0}\" rev-parse HEAD", p.Path), 10000);
-            if (remote != null && local != null)
-            {
+                // fetch 失败: 尝试 ls-remote 兜底 (可能只是 fetch 超时)
+                string remote = RunGit(string.Format("-C \"{0}\" ls-remote origin {1}", p.Path, branch), 20000);
+                string local = RunGit(string.Format("-C \"{0}\" rev-parse HEAD", p.Path), 10000);
+                if (remote == null || local == null) return "无法连接远程仓库";
                 string[] parts = remote.Split(new char[] { '\t', ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                 string rh = parts.Length > 0 ? parts[0] : "";
                 string lh = local.Trim();
                 if (rh.Length >= 7 && rh.Equals(lh, StringComparison.OrdinalIgnoreCase))
-                    return "已是最新";   // 本地与远程默认分支一致 → 就是最新的, 不报失败
-
-                // 远程有不同提交: 尝试 fetch + fast-forward (不依赖分支名一致)
-                string fetched = RunGit(string.Format("-C \"{0}\" fetch origin", p.Path), 60000);
-                if (fetched == null) return "拉取失败（网络或冲突）";
-                string behind2 = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..FETCH_HEAD", p.Path), 10000);
-                int n2;
-                behind2 = (behind2 ?? "").Trim();
-                if (behind2.Length > 0 && int.TryParse(behind2, out n2) && n2 <= 0)
-                    return "已是最新";   // fetch 后发现其实没有落后
-                string r2 = RunGit(string.Format("-C \"{0}\" merge --ff-only FETCH_HEAD", p.Path), 60000);
-                if (r2 == null) return "拉取失败（本地有改动或冲突）";
-                return "已更新至最新";
+                    return "已是最新";
+                return "拉取失败（网络或冲突）";
             }
+            string behind = RunGit(string.Format("-C \"{0}\" rev-list --count HEAD..FETCH_HEAD", p.Path), 10000);
+            int n;
+            behind = (behind ?? "").Trim();
+            if (behind.Length == 0 || !int.TryParse(behind, out n) || n <= 0)
+                return "已是最新";   // 无落后提交 → 就是最新的, 不执行 pull, 不误报
 
-            return "无法连接远程仓库";
+            // 确实有更新: fast-forward 拉取
+            string r = RunGit(string.Format("-C \"{0}\" pull --ff-only", p.Path), 120000);
+            AppendLog("[plugin] git pull " + p.Name + (r == null ? " (失败)" : " 完成") + " ahead=" + n);
+            if (r == null) return "拉取失败（网络或冲突）";
+            return "已更新至最新";
         }
 
         // 一键维护: 更新所有 git 插件 (仅真正有更新的执行 pull, 已最新明确显示, 绝不误报失败)
