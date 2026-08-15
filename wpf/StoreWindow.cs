@@ -18,13 +18,14 @@ using System.Windows.Shell;
 
 namespace DeepSeekHarness
 {
-    // ---------- 自绘暗色下拉 (Popup + ListBox) ----------
+    // ---------- 自绘暗色/浅色自适应现代下拉 (Popup + ListBox) ----------
     class ModernDropdown : ContentControl
     {
         string[] items = new string[0];
         Popup popup;
         ListBox listBox;
         TextBlock faceText;
+        Border face;
         bool hover;
         bool open;
 
@@ -39,27 +40,42 @@ namespace DeepSeekHarness
 
         public ModernDropdown()
         {
-            var face = new Border
+            face = new Border
             {
                 CornerRadius = new CornerRadius(8),
                 Background = Palette.Brush(Palette.BgInput),
-                Padding = new Thickness(12, 0, 8, 0),
+                BorderBrush = Palette.Brush(Palette.BorderSoft),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(12, 0, 10, 0),
                 Cursor = Cursors.Hand,
                 MinHeight = 34
             };
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
-            faceText = new TextBlock { Foreground = Palette.Brush(Palette.Text), FontSize = 13, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            var chev = new TextBlock { Text = "▾", Foreground = Palette.Brush(Palette.TextDim), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+            faceText = new TextBlock
+            {
+                Foreground = Palette.Brush(Palette.Text),
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            var chev = new TextBlock
+            {
+                Text = "▾",
+                Foreground = Palette.Brush(Palette.TextDim),
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
             Grid.SetColumn(chev, 1);
             g.Children.Add(faceText);
             g.Children.Add(chev);
             face.Child = g;
             Content = face;
 
-            face.MouseEnter += delegate { hover = true; Paint(face); };
-            face.MouseLeave += delegate { hover = false; Paint(face); };
+            face.MouseEnter += delegate { hover = true; Paint(); };
+            face.MouseLeave += delegate { hover = false; Paint(); };
             face.MouseLeftButtonUp += delegate { Toggle(); };
 
             popup = new Popup
@@ -78,15 +94,25 @@ namespace DeepSeekHarness
                 BorderThickness = new Thickness(0),
                 FontSize = 13,
                 MaxHeight = 300,
-                Padding = new Thickness(2)
+                Padding = new Thickness(4)
             };
             var itemStyle = new Style(typeof(ListBoxItem));
             itemStyle.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-            itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(10, 6, 10, 6)));
+            itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 8, 12, 8)));
             itemStyle.Setters.Add(new Setter(Control.CursorProperty, Cursors.Hand));
-            itemStyle.Setters.Add(new Setter(Control.ForegroundProperty, Palette.Brush(Palette.TextDim)));
-            itemStyle.Triggers.Add(new Trigger { Property = UIElement.IsMouseOverProperty, Value = true, Setters = { new Setter(Control.BackgroundProperty, Palette.Brush(Palette.BgInput)) } });
-            itemStyle.Triggers.Add(new Trigger { Property = Selector.IsSelectedProperty, Value = true, Setters = { new Setter(Control.BackgroundProperty, Palette.Brush(Palette.Blue)), new Setter(Control.ForegroundProperty, Brushes.White) } });
+            itemStyle.Setters.Add(new Setter(Control.ForegroundProperty, Palette.Brush(Palette.Text)));
+
+            var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, Palette.Brush(Palette.BgCardHover)));
+            hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue)));
+            itemStyle.Triggers.Add(hoverTrigger);
+
+            var selTrigger = new Trigger { Property = Selector.IsSelectedProperty, Value = true };
+            selTrigger.Setters.Add(new Setter(Control.BackgroundProperty, Palette.BrushA(Palette.Blue, (byte)(Palette.IsDark ? 50 : 35))));
+            selTrigger.Setters.Add(new Setter(Control.ForegroundProperty, Palette.Brush(Palette.IsDark ? Palette.Cyan : Palette.Blue)));
+            selTrigger.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.SemiBold));
+            itemStyle.Triggers.Add(selTrigger);
+
             listBox.ItemContainerStyle = itemStyle;
             listBox.SelectionChanged += delegate
             {
@@ -94,6 +120,9 @@ namespace DeepSeekHarness
                 if (idx >= 0 && idx < items.Length)
                 {
                     SelectedIndex = idx;
+                    open = false;
+                    popup.IsOpen = false;
+                    Paint();
                     InvalidateVisual();
                     if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty);
                 }
@@ -105,6 +134,7 @@ namespace DeepSeekHarness
                 Padding = new Thickness(4),
                 BorderBrush = Palette.Brush(Palette.BorderSoft),
                 BorderThickness = new Thickness(1),
+                Effect = Palette.CardShadow(),
                 Child = listBox,
                 MinWidth = 160
             };
@@ -121,25 +151,34 @@ namespace DeepSeekHarness
                 popup.IsOpen = true;
             }
             else popup.IsOpen = false;
+            Paint();
             InvalidateVisual();
         }
 
-        void Paint(Border face)
+        void Paint()
         {
-            face.Background = Palette.Brush(open ? Palette.Blue : (hover ? Palette.Border : Palette.BgInput));
+            if (face == null) return;
+            face.Background = Palette.Brush(hover ? Palette.BgCardHover : Palette.BgInput);
+            face.BorderBrush = Palette.Brush(open ? Palette.Blue : (hover ? Palette.Border : Palette.BorderSoft));
+            if (faceText != null) faceText.Foreground = Palette.Brush(Palette.Text);
         }
 
         public void SetItems(string[] arr, int sel)
         {
             items = (arr == null) ? new string[0] : (string[])arr.Clone();
             SelectedIndex = (items.Length > 0) ? Math.Min(Math.Max(0, sel), items.Length - 1) : -1;
+            Paint();
             InvalidateVisual();
         }
 
         protected override void OnRender(DrawingContext dc)
         {
             base.OnRender(dc);
-            faceText.Text = SelectedItem;
+            if (faceText != null)
+            {
+                faceText.Text = SelectedItem;
+                faceText.Foreground = Palette.Brush(Palette.Text);
+            }
         }
     }
 
@@ -403,13 +442,24 @@ namespace DeepSeekHarness
             bool installed = dsh.IsPluginInstalled(it.Name);
             var row = new Border
             {
-                Background = Palette.Brush(Palette.BgCard),
+                Background = Palette.CardGradient(),
+                BorderBrush = Palette.CardBorderBrush(),
+                BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(12),
-                Padding = new Thickness(14, 10, 14, 10),
-                Margin = new Thickness(0, 0, 0, 8)
+                Padding = new Thickness(16, 12, 16, 12),
+                Margin = new Thickness(0, 0, 0, 10),
+                Effect = Palette.CardShadow()
             };
-            row.MouseEnter += delegate { row.Background = Palette.Brush(Palette.BgInput); };
-            row.MouseLeave += delegate { row.Background = Palette.Brush(Palette.BgCard); };
+            row.MouseEnter += delegate
+            {
+                row.Background = Palette.Brush(Palette.BgCardHover);
+                row.BorderBrush = Palette.BrushA(Palette.BlueLight, 80);
+            };
+            row.MouseLeave += delegate
+            {
+                row.Background = Palette.CardGradient();
+                row.BorderBrush = Palette.CardBorderBrush();
+            };
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -419,11 +469,11 @@ namespace DeepSeekHarness
             if (!string.IsNullOrEmpty(it.Lang)) { if (meta.Length > 0) meta.Append(" · "); meta.Append(it.Lang); }
             if (!string.IsNullOrEmpty(it.Pushed)) { if (meta.Length > 0) meta.Append(" · "); meta.Append(it.Pushed); }
             left.Children.Add(new TextBlock { Text = it.Name, Foreground = Palette.Brush(Palette.Text), FontSize = 15, FontWeight = FontWeights.SemiBold });
-            left.Children.Add(new TextBlock { Text = meta.Length > 0 ? meta.ToString() : "GitHub", Foreground = Palette.Brush(Palette.Warn), FontSize = 12, Margin = new Thickness(0, 2, 0, 0) });
+            left.Children.Add(new TextBlock { Text = meta.Length > 0 ? meta.ToString() : "GitHub", Foreground = Palette.Brush(Palette.Warn), FontSize = 12, Margin = new Thickness(0, 3, 0, 0) });
             left.Children.Add(new TextBlock
             {
                 Text = string.IsNullOrEmpty(it.Desc) ? it.FullName : it.Desc,
-                Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, Margin = new Thickness(0, 4, 0, 0),
+                Foreground = Palette.Brush(Palette.TextDim), FontSize = 12, Margin = new Thickness(0, 5, 0, 0),
                 TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 640
             });
             g.Children.Add(left);
@@ -436,14 +486,26 @@ namespace DeepSeekHarness
                 var t = new Thread(delegate()
                 {
                     string err = dsh.InstallPluginFromUrl(it.Url);
-                    Dispatcher.BeginInvoke(new Action(delegate { Render(); if (err.Length > 0) MessageBox.Show(this, err, "安装失败", MessageBoxButton.OK, MessageBoxImage.Warning); }));
+                    Dispatcher.BeginInvoke(new Action(delegate { Render(); if (err.Length > 0) MainWindow.ShowModernWarn(this, "安装失败", err); }));
                 });
                 t.IsBackground = true;
                 t.Start();
             });
-            install.Background = Palette.Brush(installed ? Palette.BgInput : Palette.Blue);
-            install.MouseEnter += delegate { if (!installed) install.Background = Palette.Brush(Palette.BlueLight); };
-            install.MouseLeave += delegate { install.Background = Palette.Brush(installed ? Palette.BgInput : Palette.Blue); };
+            install.Background = installed ? (Brush)Palette.Brush(Palette.BgInput) : (Brush)Palette.BlueGradient();
+            if (!installed) install.Effect = Palette.GlowEffect(Palette.Blue, 0.35);
+            install.MouseEnter += delegate
+            {
+                if (!installed)
+                {
+                    install.Background = Palette.Brush(Palette.BlueLight);
+                    install.Effect = Palette.GlowEffect(Palette.Blue, 0.6);
+                }
+            };
+            install.MouseLeave += delegate
+            {
+                install.Background = installed ? (Brush)Palette.Brush(Palette.BgInput) : (Brush)Palette.BlueGradient();
+                if (!installed) install.Effect = Palette.GlowEffect(Palette.Blue, 0.35);
+            };
             right.Children.Add(browse);
             right.Children.Add(install);
             Grid.SetColumn(right, 1);
