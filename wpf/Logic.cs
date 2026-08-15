@@ -56,7 +56,7 @@ namespace DeepSeekHarness
             { "正在刷新…", "Refreshing…" }, { "正在获取插件列表…", "Fetching plugin list…" },
             { "共 {0} 个插件 · 数据来自 GitHub", "{0} plugins from GitHub" }, { " · 缓存", " · cache" },
             { "GitHub 项目主页", "GitHub Project" },
-            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.2 (WPF)", "Port {0} · Launcher v1.0.2 (WPF)" },
+            { "启动器", "Launcher" }, { "端口 {0} · 启动器 v1.0.3 (WPF)", "Port {0} · Launcher v1.0.3 (WPF)" },
             { "共 {0} 个目录 · {1} 个 git 仓库", "{0} dirs · {1} git repos" }, { "目录", "Folder" },
             { "打开浏览器", "Open Browser" }, { "最近日志", "Recent Log" }, { "暂无日志", "No logs yet" },
             { "未检测到", "Not found" }, { "代理", "Proxy" }, { "直连", "Direct" }, { "npm 镜像", "npm Mirror" },
@@ -72,6 +72,16 @@ namespace DeepSeekHarness
             { "依赖完整", "dependencies OK" }, { "缺依赖", "missing deps" }, { "修复依赖", "Fix deps" },
             { "插件已被隔离", "Plugins quarantined" },
             { "关于", "About" },
+            { "未检测到 dsh，请选择你的情况", "dsh not found — choose your situation" },
+            { "如果电脑上已经装过 dsh，选「已安装」让软件自动帮你找到它；没装过就点「一键安装」。", "If dsh is already installed, pick \u201cInstalled\u201d and let the app find it; otherwise click Install." },
+            { "我已安装 dsh", "I already have dsh" },
+            { "手动选择 dsh 文件", "Pick dsh file manually" },
+            { "指定目录自动查找", "Search a folder" },
+            { "选择 dsh 可执行文件 (dsh.cmd / dsh.exe)", "Select dsh executable (dsh.cmd / dsh.exe)" },
+            { "选择包含 dsh 的文件夹（软件会自动搜索）", "Choose a folder containing dsh (auto-search)" },
+            { "已找到 dsh", "dsh found" },
+            { "未找到 dsh", "dsh not found" },
+            { "正在智能查找 dsh…", "Smart-searching dsh…" },
             { "以下插件因缺少依赖被暂时禁用，服务已正常启动：", "These plugins were disabled due to missing deps; the service is running normally:" },
             { "修复后重启服务即可恢复。可在「插件」页一键修复依赖，或在 dsh 终端执行:", "Restart the service after fixing. Use the Plugins page or run in the dsh terminal:" }
         };
@@ -808,6 +818,149 @@ namespace DeepSeekHarness
             }
             catch { }
             return env;
+        }
+
+        // ---------- 智能 dsh 定位 (多策略深度扫描) ----------
+        // 返回找到的 dsh.cmd / dsh.exe / dsh 的绝对路径, 找不到返回 ""
+        public string DeepFindDsh()
+        {
+            try
+            {
+                // 1. 配置指定
+                if (Cfg.DshCommand.IndexOf('\\') >= 0 && File.Exists(Cfg.DshCommand))
+                    return Cfg.DshCommand;
+
+                // 2. where dsh (PATH)
+                string where = RunCapture("where", "dsh", 10000);
+                if (where != null)
+                {
+                    string[] lines = where.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (string l in lines)
+                    {
+                        string p = l.Trim();
+                        if (File.Exists(p)) return p;
+                        if (!p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && !p.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
+                            && (File.Exists(p + ".cmd") || File.Exists(p + ".exe")))
+                            return File.Exists(p + ".cmd") ? p + ".cmd" : p + ".exe";
+                    }
+                }
+
+                // 3. npm 全局目录: npm prefix -g → node_modules/.bin/dsh.cmd
+                string npmGlobal = FindNpmGlobalDir();
+                if (!string.IsNullOrEmpty(npmGlobal))
+                {
+                    string[] npmCands = {
+                        Path.Combine(npmGlobal, "node_modules", ".bin", "dsh.cmd"),
+                        Path.Combine(npmGlobal, "node_modules", ".bin", "dsh"),
+                        Path.Combine(npmGlobal, "dsh.cmd"),
+                        Path.Combine(npmGlobal, "@deepseek-ai", "dsh", "bin", "dsh.cmd")
+                    };
+                    foreach (string c in npmCands)
+                        if (File.Exists(c)) return c;
+                }
+
+                // 4. 常见安装位置 + 用户可能放 dsh 的目录 (源码版: D:\software\deepseekharness 等)
+                string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string[] commonDirs = {
+                    Path.Combine(userProfile, "npm-global"),
+                    Path.Combine(userProfile, "AppData", "Roaming", "npm"),
+                    Path.Combine(userProfile, ".dsh"),
+                    Path.Combine(userProfile, "scoop", "apps", "dsh"),
+                    Path.Combine(userProfile, "scoop", "apps", "deepseek-harness"),
+                    Path.Combine(userProfile, "deepseekharness"),
+                    Path.Combine(userProfile, "dsh"),
+                    @"D:\npm-global",
+                    @"C:\npm-global",
+                    @"D:\software\deepseekharness",
+                    @"D:\software\dsh",
+                    @"D:\tools\dsh",
+                    @"D:\Program Files\dsh",
+                    @"C:\Program Files\dsh",
+                    @"C:\Program Files\DeepSeekHarness"
+                };
+                foreach (string d in commonDirs)
+                {
+                    if (!Directory.Exists(d)) continue;
+                    string found = FindDshInTree(d, 4);
+                    if (found.Length > 0) return found;
+                }
+
+                // 5. PATH 全目录浅扫
+                foreach (string dir in AllPathDirs())
+                {
+                    try
+                    {
+                        string f = Path.Combine(dir, "dsh.cmd");
+                        if (File.Exists(f)) return f;
+                        f = Path.Combine(dir, "dsh.exe");
+                        if (File.Exists(f)) return f;
+                        f = Path.Combine(dir, "dsh");
+                        if (File.Exists(f)) return f;
+                        f = Path.Combine(dir, "dsh.cjs");
+                        if (File.Exists(f)) return f;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return "";
+        }
+
+        // 在目录树中递归查找 dsh 可执行文件 (限深防卡死)
+        // 支持: dsh.cmd / dsh.exe / dsh (全局安装) + dsh.cjs / dsh.js (源码版入口)
+        public static string FindDshInTree(string root, int maxDepth)
+        {
+            var found = new List<string>();
+            try
+            {
+                Action<string, int> walk = null;
+                walk = delegate(string dir, int depth)
+                {
+                    if (depth > maxDepth || found.Count > 0) return;
+                    try
+                    {
+                        // 跳过 node_modules 深层 (内部可能有海量重复)
+                        string dirName = Path.GetFileName(dir);
+                        if (dirName == "node_modules" && depth > 0) return;
+                        if (dirName.StartsWith(".")) return;
+
+                        // 精确入口名: 全局安装是 dsh.cmd/.exe, 源码版可能是 bin/dsh.cjs 或 dsh.js
+                        string[] names = { "dsh.cmd", "dsh.exe", "dsh", "dsh.cjs", "dsh.js" };
+                        foreach (string n in names)
+                        {
+                            string f = Path.Combine(dir, n);
+                            if (File.Exists(f))
+                            {
+                                // 对 .cjs/.js 入口, 确认它确实是 dsh (同目录或上级 package.json name 含 dsh)
+                                if (n.EndsWith(".cjs", StringComparison.OrdinalIgnoreCase) || n.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    string pj = Path.Combine(dir, "package.json");
+                                    if (!File.Exists(pj)) pj = Path.Combine(Path.GetDirectoryName(dir), "package.json");
+                                    if (File.Exists(pj))
+                                    {
+                                        try
+                                        {
+                                            var ser = new JavaScriptSerializer();
+                                            var d = ser.DeserializeObject(File.ReadAllText(pj)) as Dictionary<string, object>;
+                                            string nm = d != null && d.ContainsKey("name") ? Convert.ToString(d["name"]) : "";
+                                            if (nm.IndexOf("dsh", StringComparison.OrdinalIgnoreCase) < 0) continue;   // 不是 dsh 包
+                                        }
+                                        catch { }
+                                    }
+                                }
+                                found.Add(f);
+                                return;
+                            }
+                        }
+                        foreach (string sub in Directory.GetDirectories(dir))
+                            walk(sub, depth + 1);
+                    }
+                    catch { }
+                };
+                walk(root, 0);
+            }
+            catch { }
+            return found.Count > 0 ? found[0] : "";
         }
 
         // ---------- 代理: 多级自动探测 ----------
